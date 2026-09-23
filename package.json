@@ -1,7 +1,7 @@
 {
   "name": "happ-bridge",
-  "version": "1.0.0",
-  "description": "macOS menu bar app: stable localhost SOCKS5/HTTP bridge to Happ proxy on your phone for Telegram, Cursor, Firefox, WebStorm",
+  "version": "1.1.0",
+  "description": "macOS menu bar app: stable localhost SOCKS5/HTTP bridge to Happ on your phone. Multi-peer picker, manual inject for Cursor/WebStorm/Firefox.",
   "homepage": "https://anatoly-kulishov.github.io/happ-bridge/",
   "repository": {
     "type": "git",
@@ -31,9 +31,11 @@
     "dev": "vite",
     "build": "vite build",
     "test": "tsx scripts/selfcheck.ts",
-    "dist": "npm run build && electron-builder --mac dmg"
+    "prepare:dmg": "bash scripts/prepare-dmg-installer.sh",
+    "dist": "npm run prepare:dmg && npm run build && electron-builder --mac dmg"
   },
   "dependencies": {
+    "electron-updater": "^6.3.9",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -67,12 +69,13 @@
       {
         "from": "resources",
         "to": ".",
-        "filter": ["*.png"]
+        "filter": ["*.png", "*@2x.png"]
       }
     ],
     "mac": {
       "category": "public.app-category.utilities",
       "icon": "resources/icon.png",
+      "identity": null,
       "target": [
         "dmg"
       ],
@@ -80,11 +83,42 @@
         "NSLocalNetworkUsageDescription": "Чтобы найти телефон с Happ в вашей Wi-Fi сети",
         "LSUIElement": true
       },
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
       "gatekeeperAssess": false
     },
     "dmg": {
-      "title": "Happ Bridge"
-    }
+      "title": "Happ Bridge",
+      "contents": [
+        {
+          "x": 140,
+          "y": 150
+        },
+        {
+          "x": 400,
+          "y": 150,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 140,
+          "y": 360,
+          "type": "file",
+          "path": "resources/macos/Install Happ Bridge.command"
+        },
+        {
+          "x": 400,
+          "y": 360,
+          "type": "file",
+          "path": "resources/macos/READ ME.txt"
+        }
+      ]
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "anatoly-kulishov",
+        "repo": "happ-bridge"
+      }
+    ]
   }
 }

@@ -43,6 +43,26 @@ body {
   outline-offset: 2px;
 }
 
+@layer components {
+  .btn-primary {
+    @apply rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150;
+    @apply hover:bg-sky-500 active:scale-[0.98] disabled:opacity-50;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60;
+  }
+
+  .btn-secondary {
+    @apply rounded-lg border border-zinc-700 bg-transparent px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors duration-150;
+    @apply hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-50;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60;
+  }
+
+  .btn-ghost {
+    @apply rounded-lg px-3 py-2.5 text-sm font-medium text-zinc-400 transition-colors duration-150;
+    @apply hover:bg-zinc-800 hover:text-zinc-200 active:scale-[0.98];
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

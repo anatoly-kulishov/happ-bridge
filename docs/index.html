@@ -6,11 +6,11 @@
     <title>Happ Bridge - стабильный прокси к Happ на телефоне для macOS</title>
     <meta
       name="description"
-      content="Happ Bridge - menu bar приложение для macOS. Автоматический SOCKS5 и HTTP прокси 127.0.0.1 для Telegram, Cursor, Firefox и WebStorm через Happ на iPhone. IP телефона больше не нужно менять вручную."
+      content="Happ Bridge 1.1 - menu bar для macOS. SOCKS5/HTTP 127.0.0.1 для Telegram, Cursor, Firefox и WebStorm через Happ на iPhone. Несколько телефонов в сети, ручная прописка прокси."
     />
     <meta
       name="keywords"
-      content="Happ Bridge, Happ прокси, SOCKS5 macOS, HTTP proxy iPhone, Telegram прокси, Cursor proxy, WebStorm proxy, Firefox proxy, LAN Happ, локальный прокси, смена IP Wi-Fi"
+      content="Happ Bridge, Happ прокси, SOCKS5 macOS, HTTP proxy iPhone, Telegram прокси, Cursor proxy, WebStorm proxy, Firefox proxy, LAN Happ, локальный прокси, смена IP Wi-Fi, 1.1"
     />
     <meta name="author" content="Happ Bridge" />
     <meta name="robots" content="index,follow" />
@@ -20,19 +20,19 @@
     <meta property="og:locale" content="ru_RU" />
     <meta property="og:locale:alternate" content="en_US" />
     <meta property="og:site_name" content="Happ Bridge" />
-    <meta property="og:title" content="Happ Bridge - стабильный прокси к Happ на macOS" />
+    <meta property="og:title" content="Happ Bridge 1.1 - стабильный прокси к Happ на macOS" />
     <meta
       property="og:description"
-      content="Один раз настройте 127.0.0.1:10808 / 10809. Happ Bridge сам находит телефон в Wi-Fi и держит мост к Happ."
+      content="Один раз настройте 127.0.0.1:10808 / 10809. Happ Bridge сам находит телефон в Wi-Fi. Ручная прописка в Cursor, WebStorm, Firefox."
     />
     <meta property="og:url" content="https://anatoly-kulishov.github.io/happ-bridge/" />
     <meta property="og:image" content="https://anatoly-kulishov.github.io/happ-bridge/og.png" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Happ Bridge - стабильный прокси к Happ на macOS" />
+    <meta name="twitter:title" content="Happ Bridge 1.1 - стабильный прокси к Happ на macOS" />
     <meta
       name="twitter:description"
-      content="Menu bar app: SOCKS5/HTTP localhost bridge to Happ on your phone. For Telegram, Cursor, Firefox, WebStorm."
+      content="Menu bar app: SOCKS5/HTTP localhost bridge to Happ. Multi-peer, manual inject for Cursor / Firefox / WebStorm."
     />
     <meta name="twitter:image" content="https://anatoly-kulishov.github.io/happ-bridge/og.png" />
 
@@ -52,8 +52,8 @@
         },
         "description": "macOS menu bar app that keeps a stable localhost SOCKS5/HTTP proxy to Happ on your phone for Telegram, Cursor, Firefox and WebStorm.",
         "url": "https://anatoly-kulishov.github.io/happ-bridge/",
-        "downloadUrl": "https://github.com/anatoly-kulishov/happ-bridge",
-        "softwareVersion": "1.0.0",
+        "downloadUrl": "https://github.com/anatoly-kulishov/happ-bridge/releases",
+        "softwareVersion": "1.1.0",
         "license": "https://opensource.org/licenses/MIT",
         "inLanguage": ["ru", "en"],
         "keywords": "Happ, SOCKS5, HTTP proxy, macOS, Telegram, Cursor, WebStorm, Firefox, LAN"
@@ -208,7 +208,7 @@
   </head>
   <body>
     <main class="wrap">
-      <p class="eyebrow">macOS · Happ · SOCKS5 / HTTP</p>
+      <p class="eyebrow">macOS · Happ · SOCKS5 / HTTP · v1.1</p>
       <h1>Стабильный прокси к Happ на телефоне</h1>
       <p class="lead">
         Happ Bridge - приложение в строке меню. Один раз укажите
@@ -217,15 +217,45 @@
       </p>
 
       <div class="actions">
-        <a class="btn btn-primary" href="https://github.com/anatoly-kulishov/happ-bridge">
-          GitHub репозиторий
-        </a>
         <a
-          class="btn btn-ghost"
-          href="https://github.com/anatoly-kulishov/happ-bridge#install"
+          class="btn btn-primary"
+          href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest"
         >
-          Установка
+          Скачать .dmg (1.1.0)
         </a>
+        <a class="btn btn-ghost" href="https://github.com/anatoly-kulishov/happ-bridge#install">
+          Как установить
+        </a>
+      </div>
+
+      <p class="lead" style="margin-top: 1rem; font-size: 0.95rem; color: var(--muted)">
+        Без подписи Apple: откройте DMG → <strong>Install Happ Bridge.command</strong> → Установить.
+        Установщик сам снимет блокировку с приложения.
+      </p>
+
+      <div
+        class="card"
+        style="margin: 0 0 2.5rem; max-width: 40rem"
+        aria-label="Обход блокировки установщика"
+      >
+        <h2 style="margin: 0 0 0.5rem; font-size: 1rem">Если macOS блокирует установщик</h2>
+        <p style="margin: 0 0 0.75rem; color: var(--muted); font-size: 0.9rem">
+          Откройте «Терминал» и выполните (скопируйте обе строки):
+        </p>
+        <pre
+          style="
+            margin: 0;
+            padding: 0.85rem 1rem;
+            overflow-x: auto;
+            border-radius: 0.45rem;
+            background: #0c0e12;
+            border: 1px solid var(--line);
+            color: #e2e8f0;
+            font-size: 0.8rem;
+            line-height: 1.55;
+          "
+        ><code>xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command"
+open "/Volumes/Happ Bridge/Install Happ Bridge.command"</code></pre>
       </div>
 
       <section class="grid" aria-label="Преимущества">
@@ -234,8 +264,15 @@
           <p>Приложения всегда ходят на localhost. IP телефона живёт только внутри Happ Bridge.</p>
         </article>
         <article class="card">
-          <h2>Автопоиск в Wi‑Fi</h2>
-          <p>Находит Happ с открытым LAN-портом, запоминает IP и переподключается при обрыве.</p>
+          <h2>Несколько телефонов</h2>
+          <p>Находит все Happ в сети - выберите нужный IP в списке.</p>
+        </article>
+        <article class="card">
+          <h2>Прописка вручную</h2>
+          <p>
+            Cursor, WebStorm, Firefox - кнопка «Прописать» и предложение перезапустить приложение.
+            Без автоподмены в фоне.
+          </p>
         </article>
         <article class="card">
           <h2>Безопасный localhost</h2>
@@ -244,16 +281,19 @@
       </section>
 
       <section class="en" lang="en">
-        <h2>Happ Bridge for macOS</h2>
+        <h2>Happ Bridge 1.1 for macOS</h2>
         <p class="lead" style="margin-bottom: 0">
-          Menu bar utility: stable SOCKS5/HTTP localhost bridge to Happ on your phone. Stop editing
-          proxy IPs after every Wi‑Fi lease change.
+          Menu bar utility: stable SOCKS5/HTTP localhost bridge to Happ. Multi-peer picker, manual
+          inject for Cursor / WebStorm / Firefox with relaunch prompt. Download from
+          <a href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest">GitHub Releases</a>.
         </p>
       </section>
 
       <footer>
-        Open source · MIT ·
+        Open source · MIT · v1.1.0 ·
         <a href="https://github.com/anatoly-kulishov/happ-bridge">anatoly-kulishov/happ-bridge</a>
+        ·
+        <a href="https://github.com/anatoly-kulishov/happ-bridge/blob/main/CHANGELOG.md">Changelog</a>
         · Not affiliated with Happ / Happ.su
       </footer>
     </main>

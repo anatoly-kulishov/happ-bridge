@@ -4,7 +4,9 @@
 
 Set Telegram, Cursor, Firefox, and WebStorm to `127.0.0.1` once. When the phone IP changes on Wi‑Fi, Happ Bridge updates the tunnel automatically.
 
-[Русский](#happ-bridge-рус) · [English](#happ-bridge-en) · [Download](#install) · [Site](https://anatoly-kulishov.github.io/happ-bridge/)
+[Русский](#happ-bridge-рус) · [English](#happ-bridge-en) · [Download](#install) · [Site](https://anatoly-kulishov.github.io/happ-bridge/) · [Changelog](CHANGELOG.md)
+
+**Текущая версия:** 1.1.0
 
 ---
 
@@ -25,26 +27,40 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 
 ### Кому подойдёт
 
-- macOS + телефон с Happ и включённым **«Разрешить LAN подключение»**
+- macOS (Apple Silicon) + телефон с Happ и включённым **«Разрешить LAN подключение»**
 - кто устал обновлять прокси в Telegram / Cursor / IDE после смены Wi‑Fi
 
-### Возможности
+### Возможности (1.1)
 
-- автопоиск телефона в локальной сети
+- автопоиск Happ в Wi‑Fi; если телефонов несколько - список и выбор вручную
 - локальный TCP-relay только на `127.0.0.1` (соседи по Wi‑Fi не видят прокси)
-- иконка в строке меню: зелёная / жёлтая / красная
-- мастер первого запуска на русском
-- автозапуск при входе в macOS
-- уведомление, если телефон пропал из сети
+- soft-reconnect: смена IP телефона без обрыва слушателей
+- устойчивость: 3 неудачных probe, пропуск probe при живом трафике, backoff
+- реакция на смену сети
+- иконка в строке меню (клик открывает меню, не отдельное окно)
+- **ручная** прописка прокси в Cursor / WebStorm / Firefox + предложение перезапустить приложения
+- откат прописки к прямому IP телефона (не «системный прокси»)
+- мастер первого запуска, диагностика, автозапуск при входе в macOS
+- проверка обновлений через GitHub Releases
 
 ### Установка {#install}
 
+Сборка **без Apple Developer ID**. Установщик копирует приложение в «Программы» и снимает quarantine Gatekeeper.
+
 #### Готовый .dmg
 
-1. Скачайте релиз с [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases) (когда появится) или соберите локально.
-2. Откройте `.dmg` и перетащите **Happ Bridge** в Applications.
-3. При первом запуске: ПКМ → **Открыть** (сборка без Apple Developer ID).
-4. Разрешите доступ к локальной сети, если macOS спросит.
+1. Скачайте `.dmg` с [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases) (файл вида `Happ Bridge-1.1.0-arm64.dmg`).
+2. Откройте диск и дважды нажмите **Install Happ Bridge.command** → «Установить».
+3. Если macOS блокирует установщик, в Терминале:
+
+```bash
+xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command"
+open "/Volumes/Happ Bridge/Install Happ Bridge.command"
+```
+
+4. Разрешите доступ к локальной сети, если система спросит.
+
+Подробности - в **READ ME.txt** на диске образа.
 
 #### Сборка из исходников
 
@@ -52,28 +68,21 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 git clone https://github.com/anatoly-kulishov/happ-bridge.git
 cd happ-bridge
 npm install
+npm test
 npm run dist
 ```
 
-Готовый файл: `release/Happ Bridge-*-arm64.dmg`
+Готовый файл: `release/Happ Bridge-1.1.0-arm64.dmg`
 
-Разработка:
-
-```bash
-npm run dev
-npm test
-```
+Разработка: `npm run dev`
 
 ### Как пользоваться
 
-1. На телефоне включите Happ и тумблер **Разрешить LAN подключение**.
-2. Запустите Happ Bridge, пройдите мастер, нажмите **Найти телефон**.
-3. Один раз вставьте в приложения:
-
-   - SOCKS5: `127.0.0.1:10808`
-   - HTTP: `127.0.0.1:10809`
-
-4. Окно можно закрыть - приложение остаётся в строке меню.
+1. На телефоне: Happ + **Разрешить LAN подключение**.
+2. Запустите Happ Bridge, пройдите мастер, дождитесь статуса «Подключено».
+3. Вставьте в приложения `127.0.0.1:10808` (SOCKS5) / `127.0.0.1:10809` (HTTP)  
+   **или** в настройках выберите Cursor / WebStorm / Firefox → **Прописать** → согласитесь на перезапуск.
+4. Окно можно закрыть - приложение остаётся в строке меню. Откат прописки - кнопка **Откатить** (вручную).
 
 ### Ключевые слова
 
@@ -83,8 +92,9 @@ Happ proxy, Happ LAN, SOCKS5 macOS, HTTP proxy iPhone, Telegram proxy, Cursor pr
 
 - слушатели только на localhost
 - системный proxy macOS не меняется
-- настройки хранятся локально в userData Electron
-- исходный код открыт (MIT)
+- прописка в приложениях - только по вашей кнопке
+- настройки локально в userData Electron
+- исходный код открыт (MIT) - см. [SECURITY.md](SECURITY.md)
 
 ### Стек
 
@@ -102,15 +112,24 @@ Electron · Vite · React · TypeScript · Tailwind
 
 Stable localhost proxy bridge to a phone running Happ on your LAN. Stop editing proxy IPs in Telegram, Cursor, Firefox, and WebStorm every time DHCP moves your phone.
 
+**Version 1.1.0** - multi-peer picker, manual app inject with restart prompt, Gatekeeper-friendly DMG installer.
+
 ### Quick start
 
+1. Download the `.dmg` from [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases).
+2. Open **Install Happ Bridge.command** → Install (copies to `/Applications`, clears quarantine; unsigned, no Apple Developer ID).
+3. If macOS blocks the installer:
+
 ```bash
-npm install
-npm run dist   # builds macOS .dmg
-npm run dev    # menu bar app in development
+xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command"
+open "/Volumes/Happ Bridge/Install Happ Bridge.command"
 ```
 
-Point apps at `127.0.0.1:10808` (SOCKS5) and `127.0.0.1:10809` (HTTP). Happ Bridge discovers the phone and relays traffic.
+```bash
+npm install && npm test && npm run dist
+```
+
+Point apps at `127.0.0.1:10808` (SOCKS5) and `127.0.0.1:10809` (HTTP), or use **Прописать** in Settings for Cursor / WebStorm / Firefox, then restart those apps when offered.
 
 ### Keywords
 

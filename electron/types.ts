@@ -1,30 +1,57 @@
 export type BridgeStatus = 'connected' | 'searching' | 'disconnected'
 
+export type InjectTargetId = 'cursor' | 'webstorm' | 'firefox'
+
 export type AppSettings = {
   lastPhoneIp: string | null
+  recentPhoneIps: string[]
   socksPort: number
   httpPort: number
   openAtLogin: boolean
   wizardDone: boolean
   manualIp: string | null
+  /** Kept for old configs; inject is manual only. */
+  seamlessAppProxy: boolean
+  /** Last inject selection (unused for auto). */
+  injectTargets: InjectTargetId[]
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   lastPhoneIp: null,
+  recentPhoneIps: [],
   socksPort: 10808,
   httpPort: 10809,
   openAtLogin: true,
   wizardDone: false,
   manualIp: null,
+  seamlessAppProxy: false,
+  injectTargets: [],
+}
+
+export type DiagnosticCheck = {
+  id: string
+  ok: boolean
+  label: string
+  detail: string
+}
+
+export type UpdateInfo = {
+  status: 'idle' | 'checking' | 'available' | 'not-available' | 'error' | 'dev'
+  message: string
+  version?: string
 }
 
 export type BridgeState = {
   status: BridgeStatus
   phoneIp: string | null
+  /** Online Happ proxies found on the last scan (may be several people). */
+  peers: string[]
   socksLocal: string
   httpLocal: string
   settings: AppSettings
   error: string | null
+  diagnostics: DiagnosticCheck[] | null
+  update: UpdateInfo
 }
 
 export type StatusTone = 'green' | 'yellow' | 'red'
@@ -74,26 +101,98 @@ export function statusPresentation(
 }
 
 export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
-  const socksPort = clampPort(raw.socksPort, DEFAULT_SETTINGS.socksPort)
-  const httpPort = clampPort(raw.httpPort, DEFAULT_SETTINGS.httpPort)
+  let socksPort = clampPort(raw.socksPort, DEFAULT_SETTINGS.socksPort)
+  let httpPort = clampPort(raw.httpPort, DEFAULT_SETTINGS.httpPort)
+  if (socksPort === httpPort) {
+    httpPort =
+      socksPort === DEFAULT_SETTINGS.httpPort
+        ? DEFAULT_SETTINGS.socksPort
+        : DEFAULT_SETTINGS.httpPort
+    if (socksPort === httpPort) httpPort = socksPort === 65535 ? socksPort - 1 : socksPort + 1
+  }
+  const lastPhoneIp = ipv4OrNull(raw.lastPhoneIp)
+  const recentPhoneIps = normalizeIpList(raw.recentPhoneIps, lastPhoneIp)
   return {
-    lastPhoneIp: stringOrNull(raw.lastPhoneIp),
+    lastPhoneIp,
+    recentPhoneIps,
     socksPort,
     httpPort,
-    openAtLogin: typeof raw.openAtLogin === 'boolean' ? raw.openAtLogin : DEFAULT_SETTINGS.openAtLogin,
-    wizardDone: typeof raw.wizardDone === 'boolean' ? raw.wizardDone : DEFAULT_SETTINGS.wizardDone,
-    manualIp: stringOrNull(raw.manualIp),
+    openAtLogin:
+      typeof raw.openAtLogin === 'boolean' ? raw.openAtLogin : DEFAULT_SETTINGS.openAtLogin,
+    wizardDone:
+      typeof raw.wizardDone === 'boolean' ? raw.wizardDone : DEFAULT_SETTINGS.wizardDone,
+    manualIp: ipv4OrNull(raw.manualIp),
+    seamlessAppProxy:
+      typeof raw.seamlessAppProxy === 'boolean'
+        ? raw.seamlessAppProxy
+        : DEFAULT_SETTINGS.seamlessAppProxy,
+    injectTargets: normalizeInjectTargets(raw.injectTargets),
   }
 }
 
+export function rememberPhoneIp(
+  settings: AppSettings,
+  ip: string,
+): Pick<AppSettings, 'lastPhoneIp' | 'recentPhoneIps'> {
+  if (!isIpv4(ip)) {
+    return {
+      lastPhoneIp: settings.lastPhoneIp,
+      recentPhoneIps: settings.recentPhoneIps,
+    }
+  }
+  const recent = [ip, ...settings.recentPhoneIps.filter((x) => x !== ip)].slice(0, 8)
+  return { lastPhoneIp: ip, recentPhoneIps: recent }
+}
+
+function normalizeIpList(value: unknown, lastPhoneIp: string | null): string[] {
+  const fromArray = Array.isArray(value)
+    ? value.filter((x): x is string => typeof x === 'string' && isIpv4(x.trim()))
+    : []
+  const merged = [
+    ...fromArray.map((x) => x.trim()),
+    ...(lastPhoneIp ? [lastPhoneIp] : []),
+  ]
+  return [...new Set(merged)].slice(0, 8)
+}
+
+/** Reject bool/string coercion (true→1) and non-integers. */
 function clampPort(value: unknown, fallback: number): number {
-  const n = typeof value === 'number' ? value : Number(value)
-  if (!Number.isInteger(n) || n < 1 || n > 65535) return fallback
-  return n
+  if (typeof value !== 'number' || !Number.isInteger(value)) return fallback
+  if (value < 1 || value > 65535) return fallback
+  return value
 }
 
 function stringOrNull(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+export function isIpv4(value: string): boolean {
+  const parts = value.split('.')
+  if (parts.length !== 4) return false
+  return parts.every((part) => {
+    if (!/^\d{1,3}$/.test(part)) return false
+    const n = Number(part)
+    return Number.isInteger(n) && n >= 0 && n <= 255 && String(n) === part
+  })
+}
+
+function ipv4OrNull(value: unknown): string | null {
+  const s = stringOrNull(value)
+  return s && isIpv4(s) ? s : null
+}
+
+const INJECT_IDS: InjectTargetId[] = ['cursor', 'webstorm', 'firefox']
+
+function normalizeInjectTargets(value: unknown): InjectTargetId[] {
+  if (!Array.isArray(value)) return []
+  const out: InjectTargetId[] = []
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    if ((INJECT_IDS as string[]).includes(item) && !out.includes(item as InjectTargetId)) {
+      out.push(item as InjectTargetId)
+    }
+  }
+  return out
 }
