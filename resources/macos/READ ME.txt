@@ -1,20 +1,19 @@
-Установка Happ Bridge 1.1 (без подписи Apple)
+Установка Happ Bridge 1.1.2 (без подписи Apple)
 =============================================
 
-1. Дважды нажмите «Install Happ Bridge.command».
-2. Если macOS блокирует установщик - откройте «Терминал»
-   и выполните эти две команды (скопируйте целиком):
+1. Скачайте .dmg и откройте диск.
+2. Запустите «Install Happ Bridge.command» → «Установить».
+   Приложение попадёт в «Программы».
 
-xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command"
-open "/Volumes/Happ Bridge/Install Happ Bridge.command"
+Если macOS блокирует УСТАНОВЩИК - в Терминале (одна строка):
 
-   Если диск называется иначе - подставьте своё имя из /Volumes.
+xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command" && open "/Volumes/Happ Bridge/Install Happ Bridge.command"
 
-3. В диалоге нажмите «Установить» - приложение попадёт в «Программы»,
-   quarantine Gatekeeper снимется автоматически.
+Если приложение УЖЕ установлено, но не запускается - в Терминале (одна строка):
 
-После запуска иконка - в строке меню (не в Dock).
+xattr -cr "/Applications/Happ Bridge.app" && open "/Applications/Happ Bridge.app"
+
+Иконка появится в строке меню (справа вверху), не в Dock.
+
 В настройках можно вручную прописать 127.0.0.1 в Cursor / WebStorm / Firefox
 и согласиться на перезапуск приложений.
-
-Перетаскивать .app вручную не обязательно.

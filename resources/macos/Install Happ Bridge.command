@@ -45,8 +45,7 @@ display dialog "Установить Happ Bridge в папку «Програм�
 
 Если этот установщик сам не запускался из‑за блокировки macOS, в Терминале:
 
-xattr -cr \"/Volumes/Happ Bridge/Install Happ Bridge.command\"
-open \"/Volumes/Happ Bridge/Install Happ Bridge.command\"
+xattr -cr \"/Volumes/Happ Bridge/Install Happ Bridge.command\" && open \"/Volumes/Happ Bridge/Install Happ Bridge.command\"
 
 После установки приложение запустится само. Иконка - в строке меню." \
   with title "Happ Bridge" \

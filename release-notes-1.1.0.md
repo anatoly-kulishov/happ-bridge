@@ -8,8 +8,7 @@ macOS menu bar: stable `127.0.0.1` SOCKS5/HTTP bridge to Happ on your phone.
 3. If macOS blocks the installer:
 
 ```bash
-xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command"
-open "/Volumes/Happ Bridge/Install Happ Bridge.command"
+xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command" && open "/Volumes/Happ Bridge/Install Happ Bridge.command"
 ```
 
 ### Highlights

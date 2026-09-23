@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.2 - 2026-09-23
+
+### Changed
+- Install docs: one-line `xattr && open` for installer unblock and app launch, with copy buttons
+- Landing install section layout (roomier panels) and header surface / border polish
+- DMG READ ME + Install script tip aligned with the same one-line commands
+
 ## 1.1.1 - 2026-09-23
 
 ### Changed

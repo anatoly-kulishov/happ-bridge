@@ -6,7 +6,7 @@ Set Telegram, Cursor, Firefox, and WebStorm to `127.0.0.1` once. When the phone 
 
 [Русский](#happ-bridge-рус) · [English](#happ-bridge-en) · [Download](#install) · [Site](https://anatoly-kulishov.github.io/happ-bridge/) · [Changelog](CHANGELOG.md)
 
-**Текущая версия:** 1.1.0
+**Текущая версия:** 1.1.2
 
 ---
 
@@ -49,16 +49,21 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 
 #### Готовый .dmg
 
-1. Скачайте `.dmg` с [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases) (файл вида `Happ Bridge-1.1.0-arm64.dmg`).
+1. Скачайте `.dmg` с [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases) (файл вида `Happ Bridge-1.1.2-arm64.dmg`).
 2. Откройте диск и дважды нажмите **Install Happ Bridge.command** → «Установить».
-3. Если macOS блокирует установщик, в Терминале:
+3. Если macOS блокирует **установщик**, в Терминале:
 
 ```bash
-xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command"
-open "/Volumes/Happ Bridge/Install Happ Bridge.command"
+xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command" && open "/Volumes/Happ Bridge/Install Happ Bridge.command"
 ```
 
-4. Разрешите доступ к локальной сети, если система спросит.
+4. Если приложение уже в «Программах», но **не запускается**:
+
+```bash
+xattr -cr "/Applications/Happ Bridge.app" && open "/Applications/Happ Bridge.app"
+```
+
+5. Разрешите доступ к локальной сети, если система спросит. Иконка - в строке меню.
 
 Подробности - в **READ ME.txt** на диске образа.
 
@@ -72,7 +77,7 @@ npm test
 npm run dist
 ```
 
-Готовый файл: `release/Happ Bridge-1.1.0-arm64.dmg`
+Готовый файл: `release/Happ Bridge-1.1.2-arm64.dmg`
 
 Разработка: `npm run dev`
 
@@ -112,24 +117,29 @@ Electron · Vite · React · TypeScript · Tailwind
 
 Stable localhost proxy bridge to a phone running Happ on your LAN. Stop editing proxy IPs in Telegram, Cursor, Firefox, and WebStorm every time DHCP moves your phone.
 
-**Version 1.1.0** - multi-peer picker, manual app inject with restart prompt, Gatekeeper-friendly DMG installer.
+**Version 1.1.2** - multi-peer picker, manual app inject with restart prompt, Gatekeeper-friendly DMG installer.
 
 ### Quick start
 
 1. Download the `.dmg` from [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases).
-2. Open **Install Happ Bridge.command** → Install (copies to `/Applications`, clears quarantine; unsigned, no Apple Developer ID).
-3. If macOS blocks the installer:
+2. Open **Install Happ Bridge.command** → Install (copies to `/Applications`; unsigned, no Apple Developer ID).
+3. If macOS blocks the **installer**:
 
 ```bash
-xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command"
-open "/Volumes/Happ Bridge/Install Happ Bridge.command"
+xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command" && open "/Volumes/Happ Bridge/Install Happ Bridge.command"
 ```
 
+4. If the app is installed but **won't open**:
+
 ```bash
-npm install && npm test && npm run dist
+xattr -cr "/Applications/Happ Bridge.app" && open "/Applications/Happ Bridge.app"
 ```
+
+5. Allow Local Network access if prompted. The icon lives in the menu bar.
 
 Point apps at `127.0.0.1:10808` (SOCKS5) and `127.0.0.1:10809` (HTTP), or use **Прописать** in Settings for Cursor / WebStorm / Firefox, then restart those apps when offered.
+
+Build from source: `npm install && npm test && npm run dist`
 
 ### Keywords
 
