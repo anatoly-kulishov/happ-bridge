@@ -6,296 +6,651 @@
     <title>Happ Bridge - стабильный прокси к Happ на телефоне для macOS</title>
     <meta
       name="description"
-      content="Happ Bridge 1.1 - menu bar для macOS. SOCKS5/HTTP 127.0.0.1 для Telegram, Cursor, Firefox и WebStorm через Happ на iPhone. Несколько телефонов в сети, ручная прописка прокси."
+      content="Happ Bridge 1.1 - menu bar для macOS. SOCKS5/HTTP 127.0.0.1 для Telegram, Cursor, Firefox и WebStorm через Happ на iPhone."
     />
-    <meta
-      name="keywords"
-      content="Happ Bridge, Happ прокси, SOCKS5 macOS, HTTP proxy iPhone, Telegram прокси, Cursor proxy, WebStorm proxy, Firefox proxy, LAN Happ, локальный прокси, смена IP Wi-Fi, 1.1"
-    />
-    <meta name="author" content="Happ Bridge" />
     <meta name="robots" content="index,follow" />
     <link rel="canonical" href="https://anatoly-kulishov.github.io/happ-bridge/" />
-
     <meta property="og:type" content="website" />
-    <meta property="og:locale" content="ru_RU" />
-    <meta property="og:locale:alternate" content="en_US" />
-    <meta property="og:site_name" content="Happ Bridge" />
     <meta property="og:title" content="Happ Bridge 1.1 - стабильный прокси к Happ на macOS" />
     <meta
       property="og:description"
-      content="Один раз настройте 127.0.0.1:10808 / 10809. Happ Bridge сам находит телефон в Wi-Fi. Ручная прописка в Cursor, WebStorm, Firefox."
+      content="Один раз настройте 127.0.0.1:10808 / 10809. Happ Bridge сам находит телефон в Wi-Fi."
     />
     <meta property="og:url" content="https://anatoly-kulishov.github.io/happ-bridge/" />
-    <meta property="og:image" content="https://anatoly-kulishov.github.io/happ-bridge/og.png" />
-
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Happ Bridge 1.1 - стабильный прокси к Happ на macOS" />
-    <meta
-      name="twitter:description"
-      content="Menu bar app: SOCKS5/HTTP localhost bridge to Happ. Multi-peer, manual inject for Cursor / Firefox / WebStorm."
-    />
-    <meta name="twitter:image" content="https://anatoly-kulishov.github.io/happ-bridge/og.png" />
-
+    <meta property="og:image" content="https://anatoly-kulishov.github.io/happ-bridge/logo.svg" />
+    <meta name="twitter:card" content="summary" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
-
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        "name": "Happ Bridge",
-        "applicationCategory": "UtilitiesApplication",
-        "operatingSystem": "macOS",
-        "offers": {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "USD"
-        },
-        "description": "macOS menu bar app that keeps a stable localhost SOCKS5/HTTP proxy to Happ on your phone for Telegram, Cursor, Firefox and WebStorm.",
-        "url": "https://anatoly-kulishov.github.io/happ-bridge/",
-        "downloadUrl": "https://github.com/anatoly-kulishov/happ-bridge/releases",
-        "softwareVersion": "1.1.0",
-        "license": "https://opensource.org/licenses/MIT",
-        "inLanguage": ["ru", "en"],
-        "keywords": "Happ, SOCKS5, HTTP proxy, macOS, Telegram, Cursor, WebStorm, Firefox, LAN"
-      }
-    </script>
 
     <style>
       :root {
         color-scheme: dark;
-        --bg: #0b0d12;
+        --bg: #090b10;
+        --bg-elev: #10141c;
         --fg: #f4f4f5;
         --muted: #a1a1aa;
-        --accent: #38bdf8;
-        --card: #141821;
+        --accent: #0ea5e9;
+        --accent-hover: #38bdf8;
+        --accent-ink: #04111f;
         --line: #27272a;
+        --ok: #34d399;
+        --radius: 12px;
         --ease: cubic-bezier(0.16, 1, 0.3, 1);
+        --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
-      * {
-        box-sizing: border-box;
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        *, *::before, *::after {
+          animation: none !important;
+          transition: none !important;
+        }
       }
       body {
         margin: 0;
         min-height: 100dvh;
-        font-family:
-          -apple-system,
-          BlinkMacSystemFont,
-          'Segoe UI',
-          Roboto,
-          sans-serif;
-        background:
-          radial-gradient(1200px 600px at 10% -10%, rgb(14 165 233 / 0.18), transparent 55%),
-          radial-gradient(900px 500px at 100% 0%, rgb(56 189 248 / 0.08), transparent 50%),
-          var(--bg);
+        font-family: var(--font);
+        background: var(--bg);
         color: var(--fg);
         line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
       }
-      a {
-        color: var(--accent);
+      body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background:
+          radial-gradient(900px 480px at 8% -8%, rgb(14 165 233 / 0.12), transparent 55%),
+          radial-gradient(700px 420px at 92% 4%, rgb(14 165 233 / 0.05), transparent 50%),
+          var(--bg);
+      }
+      a { color: var(--accent-hover); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+
+      .shell { max-width: 1120px; margin: 0 auto; padding: 0 1.25rem 5rem; }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 64px;
+        gap: 1rem;
+      }
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+        color: var(--fg);
+        font-weight: 650;
+        letter-spacing: -0.02em;
         text-decoration: none;
       }
-      a:hover {
-        text-decoration: underline;
+      .brand:hover { text-decoration: none; }
+      .brand img {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: block;
       }
-      .wrap {
-        max-width: 720px;
-        margin: 0 auto;
-        padding: 4rem 1.25rem 5rem;
-      }
-      .eyebrow {
-        color: var(--accent);
-        font-size: 0.75rem;
-        font-weight: 600;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-      }
-      h1 {
-        margin: 0.6rem 0 0.75rem;
-        font-size: clamp(2rem, 5vw, 2.75rem);
-        line-height: 1.1;
-        letter-spacing: -0.03em;
-        text-wrap: balance;
-      }
-      .lead {
-        margin: 0 0 1.75rem;
-        max-width: 38rem;
+      .nav-links { display: flex; align-items: center; gap: 0.25rem; }
+      .nav-links a:not(.btn) {
         color: var(--muted);
-        font-size: 1.05rem;
+        font-size: 0.9rem;
+        padding: 0.45rem 0.7rem;
+        border-radius: 8px;
+        text-decoration: none;
       }
-      .actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-        margin-bottom: 2.5rem;
+      .nav-links a:not(.btn):hover {
+        color: var(--fg);
+        background: rgb(255 255 255 / 0.04);
       }
+      .nav-cta { display: none; }
+      @media (min-width: 640px) { .nav-cta { display: inline-flex; } }
+
+      /* Buttons: beat global `a { color }` */
+      a.btn,
       .btn {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        padding: 0.7rem 1.1rem;
-        border-radius: 0.55rem;
-        font-weight: 600;
+        padding: 0.7rem 1.15rem;
+        border-radius: var(--radius);
+        font-weight: 650;
         font-size: 0.95rem;
-        transition:
-          transform 150ms var(--ease),
-          background 150ms var(--ease);
+        border: 0;
+        cursor: pointer;
+        text-decoration: none !important;
+        transition: transform 160ms var(--ease), background 160ms var(--ease), border-color 160ms var(--ease);
       }
-      .btn:hover {
-        text-decoration: none;
-      }
-      .btn:active {
-        transform: scale(0.98);
-      }
+      a.btn:active,
+      .btn:active { transform: scale(0.98); }
+      a.btn-primary,
       .btn-primary {
         background: var(--accent);
-        color: #082f49;
+        color: var(--accent-ink) !important;
       }
-      .btn-primary:hover {
-        background: #7dd3fc;
-      }
+      a.btn-primary:hover,
+      .btn-primary:hover { background: var(--accent-hover); color: var(--accent-ink) !important; }
+      a.btn-ghost,
       .btn-ghost {
         border: 1px solid var(--line);
-        color: var(--fg);
+        color: var(--fg) !important;
         background: transparent;
       }
+      a.btn-ghost:hover,
       .btn-ghost:hover {
         border-color: #52525b;
+        background: rgb(255 255 255 / 0.03);
+        color: var(--fg) !important;
       }
-      .grid {
+
+      .hero {
         display: grid;
-        gap: 0.85rem;
+        gap: 2.25rem;
+        padding: 2rem 0 3.25rem;
+        align-items: center;
       }
-      .card {
-        padding: 1rem 1.1rem;
-        border: 1px solid var(--line);
-        border-radius: 0.75rem;
-        background: var(--card);
+      @media (min-width: 960px) {
+        .hero {
+          grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+          gap: 2.75rem;
+          padding-top: 2.25rem;
+          min-height: calc(100dvh - 64px);
+        }
       }
-      .card h2 {
-        margin: 0 0 0.35rem;
-        font-size: 1rem;
-      }
-      .card p {
+      .eyebrow {
         margin: 0;
+        color: var(--accent-hover);
+        font-size: 0.72rem;
+        font-weight: 650;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .hero-copy h1 {
+        margin: 0.55rem 0 0.85rem;
+        font-size: clamp(2.1rem, 4.6vw, 3.15rem);
+        line-height: 1.08;
+        letter-spacing: -0.035em;
+        font-weight: 700;
+        max-width: 14ch;
+        text-wrap: balance;
+      }
+      .lead {
+        margin: 0 0 1.5rem;
+        max-width: 36rem;
         color: var(--muted);
-        font-size: 0.95rem;
+        font-size: 1.05rem;
       }
-      code {
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 0.9em;
+      .actions { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-bottom: 1.1rem; }
+      .ports { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+      .port {
+        font-family: var(--mono);
+        font-size: 0.78rem;
         color: #e2e8f0;
-        background: #0f172a;
-        padding: 0.1rem 0.35rem;
-        border-radius: 0.3rem;
+        background: #0c1220;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0.35rem 0.7rem;
       }
-      footer {
-        margin-top: 3rem;
-        padding-top: 1.25rem;
+      .port b { color: var(--accent-hover); font-weight: 600; }
+
+      /* Crisp app mock (vector UI, not a photo) */
+      .mock {
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: #0f1115;
+        box-shadow: 0 24px 80px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(255 255 255 / 0.03);
+        overflow: hidden;
+      }
+      .mock-bar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0.7rem 0.85rem;
+        border-bottom: 1px solid var(--line);
+        background: #12151c;
+      }
+      .mock-dot { width: 10px; height: 10px; border-radius: 50%; }
+      .mock-dot.r { background: #ff5f57; }
+      .mock-dot.y { background: #febc2e; }
+      .mock-dot.g { background: #28c840; }
+      .mock-title {
+        flex: 1;
+        text-align: center;
+        font-size: 0.72rem;
+        color: #71717a;
+        margin-right: 42px;
+      }
+      .mock-body { padding: 1rem 1.1rem 1.15rem; }
+      .mock-kicker {
+        margin: 0;
+        font-size: 0.65rem;
+        font-weight: 650;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--accent-hover);
+      }
+      .mock-h {
+        margin: 0.35rem 0 0.75rem;
+        font-size: 1.15rem;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.4rem 0.7rem;
+        border-radius: 999px;
+        border: 1px solid rgb(52 211 153 / 0.35);
+        background: rgb(52 211 153 / 0.1);
+        color: #6ee7b7;
+        font-size: 0.8rem;
+        font-weight: 550;
+      }
+      .badge i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--ok);
+        display: block;
+      }
+      .mock-sec {
+        margin-top: 1rem;
+        font-size: 0.78rem;
+        color: #a1a1aa;
+      }
+      .peer {
+        margin-top: 0.45rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.55rem 0.7rem;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #0c0e12;
+        font-family: var(--mono);
+        font-size: 0.82rem;
+      }
+      .peer.on {
+        border-color: rgb(14 165 233 / 0.55);
+        background: rgb(14 165 233 / 0.08);
+      }
+      .peer i {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #52525b;
+      }
+      .peer.on i { background: var(--accent); }
+      .row {
+        margin-top: 0.45rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.55rem 0.7rem;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: #0c0e12;
+        font-size: 0.8rem;
+      }
+      .row code {
+        font-family: var(--mono);
+        color: #e2e8f0;
+        background: transparent;
+        padding: 0;
+      }
+      .row span { color: #71717a; font-size: 0.72rem; }
+
+      .tray-mock {
+        max-width: 320px;
+        margin: 0 auto;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: rgb(28 28 30 / 0.96);
+        box-shadow: 0 18px 50px rgb(0 0 0 / 0.4);
+        padding: 0.35rem 0;
+        font-size: 0.84rem;
+      }
+      .tray-mock .item {
+        padding: 0.45rem 0.85rem;
+        color: #e4e4e7;
+      }
+      .tray-mock .item.dim { color: #a1a1aa; }
+      .tray-mock .sep {
+        height: 1px;
+        background: #3f3f46;
+        margin: 0.25rem 0;
+      }
+
+      section { padding: 3.1rem 0; border-top: 1px solid var(--line); }
+      .sec-title {
+        margin: 0 0 0.4rem;
+        font-size: clamp(1.35rem, 2.4vw, 1.75rem);
+        letter-spacing: -0.025em;
+        font-weight: 650;
+      }
+      .sec-lead {
+        margin: 0 0 1.75rem;
+        color: var(--muted);
+        max-width: 40rem;
+      }
+
+      .split {
+        display: grid;
+        gap: 1.75rem;
+        align-items: center;
+      }
+      @media (min-width: 860px) {
+        .split { grid-template-columns: 1fr 1.1fr; gap: 2.5rem; }
+      }
+      .feature-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 1rem;
+      }
+      .feature-list li {
+        padding-top: 1rem;
         border-top: 1px solid var(--line);
+      }
+      .feature-list li:first-child { padding-top: 0; border-top: 0; }
+      .feature-list h3 { margin: 0 0 0.25rem; font-size: 1rem; font-weight: 600; }
+      .feature-list p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+
+      .gallery {
+        display: grid;
+        gap: 1rem;
+      }
+      @media (min-width: 768px) {
+        .gallery { grid-template-columns: 1.2fr 0.8fr; }
+      }
+      figcaption {
+        margin: 0.65rem 0 0;
         color: var(--muted);
         font-size: 0.85rem;
       }
-      .en {
-        margin-top: 2.5rem;
-        padding-top: 1.5rem;
-        border-top: 1px solid var(--line);
+
+      .install-grid { display: grid; gap: 1rem; }
+      @media (min-width: 768px) {
+        .install-grid { grid-template-columns: 1fr 1.2fr; }
       }
+      .panel {
+        padding: 1.15rem 1.2rem;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--bg-elev);
+      }
+      .panel h3 { margin: 0 0 0.45rem; font-size: 1rem; }
+      .panel p, .panel ol { margin: 0; color: var(--muted); font-size: 0.95rem; }
+      .panel ol { padding-left: 1.15rem; display: grid; gap: 0.35rem; }
+      pre {
+        margin: 0.85rem 0 0;
+        padding: 0.9rem 1rem;
+        overflow-x: auto;
+        border-radius: 10px;
+        background: #07090e;
+        border: 1px solid var(--line);
+        color: #e2e8f0;
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        line-height: 1.55;
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.9em;
+        color: #e2e8f0;
+        background: #0c1220;
+        padding: 0.08rem 0.32rem;
+        border-radius: 0.3rem;
+      }
+      pre code { background: transparent; padding: 0; }
+
+      .en { color: var(--muted); }
       .en h2 {
         margin: 0 0 0.5rem;
-        font-size: 1.25rem;
+        color: var(--fg);
+        font-size: 1.2rem;
+        letter-spacing: -0.02em;
+      }
+      .en p { margin: 0; max-width: 42rem; }
+
+      footer {
+        margin-top: 1rem;
+        padding-top: 1.35rem;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 0.85rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem 0.75rem;
+      }
+
+      .inject-mock .check {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        margin-top: 0.45rem;
+        font-size: 0.88rem;
+      }
+      .inject-mock .box {
+        width: 14px;
+        height: 14px;
+        border-radius: 4px;
+        border: 1.5px solid #52525b;
+        background: #0c0e12;
+        flex-shrink: 0;
+      }
+      .inject-mock .box.on {
+        border-color: var(--accent);
+        background: var(--accent);
+        box-shadow: inset 0 0 0 2px #0f1115;
+      }
+      .inject-actions {
+        margin-top: 0.9rem;
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+      }
+      .inject-actions .mini {
+        flex: 1;
+        text-align: center;
+        padding: 0.55rem;
+        border-radius: 10px;
+        background: var(--accent);
+        color: var(--accent-ink);
+        font-weight: 650;
+        font-size: 0.85rem;
+      }
+      .inject-actions .link {
+        color: #a1a1aa;
+        font-size: 0.8rem;
       }
     </style>
   </head>
   <body>
-    <main class="wrap">
-      <p class="eyebrow">macOS · Happ · SOCKS5 / HTTP · v1.1</p>
-      <h1>Стабильный прокси к Happ на телефоне</h1>
-      <p class="lead">
-        Happ Bridge - приложение в строке меню. Один раз укажите
-        <code>127.0.0.1:10808</code> и <code>127.0.0.1:10809</code> в Telegram, Cursor, Firefox или
-        WebStorm. Когда IP телефона меняется, мост обновляется сам.
-      </p>
-
-      <div class="actions">
-        <a
-          class="btn btn-primary"
-          href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest"
-        >
-          Скачать .dmg (1.1.0)
+    <div class="shell">
+      <header class="nav">
+        <a class="brand" href="./">
+          <img src="./logo.svg" width="32" height="32" alt="" />
+          Happ Bridge
         </a>
-        <a class="btn btn-ghost" href="https://github.com/anatoly-kulishov/happ-bridge#install">
-          Как установить
-        </a>
-      </div>
+        <nav class="nav-links" aria-label="Разделы">
+          <a href="#how">Как работает</a>
+          <a href="#shots">Интерфейс</a>
+          <a href="#install">Установка</a>
+          <a class="btn btn-primary nav-cta" href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest"
+            >Скачать</a
+          >
+        </nav>
+      </header>
 
-      <p class="lead" style="margin-top: 1rem; font-size: 0.95rem; color: var(--muted)">
-        Без подписи Apple: откройте DMG → <strong>Install Happ Bridge.command</strong> → Установить.
-        Установщик сам снимет блокировку с приложения.
-      </p>
-
-      <div
-        class="card"
-        style="margin: 0 0 2.5rem; max-width: 40rem"
-        aria-label="Обход блокировки установщика"
-      >
-        <h2 style="margin: 0 0 0.5rem; font-size: 1rem">Если macOS блокирует установщик</h2>
-        <p style="margin: 0 0 0.75rem; color: var(--muted); font-size: 0.9rem">
-          Откройте «Терминал» и выполните (скопируйте обе строки):
-        </p>
-        <pre
-          style="
-            margin: 0;
-            padding: 0.85rem 1rem;
-            overflow-x: auto;
-            border-radius: 0.45rem;
-            background: #0c0e12;
-            border: 1px solid var(--line);
-            color: #e2e8f0;
-            font-size: 0.8rem;
-            line-height: 1.55;
-          "
-        ><code>xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command"
-open "/Volumes/Happ Bridge/Install Happ Bridge.command"</code></pre>
-      </div>
-
-      <section class="grid" aria-label="Преимущества">
-        <article class="card">
-          <h2>Адреса не меняются</h2>
-          <p>Приложения всегда ходят на localhost. IP телефона живёт только внутри Happ Bridge.</p>
-        </article>
-        <article class="card">
-          <h2>Несколько телефонов</h2>
-          <p>Находит все Happ в сети - выберите нужный IP в списке.</p>
-        </article>
-        <article class="card">
-          <h2>Прописка вручную</h2>
-          <p>
-            Cursor, WebStorm, Firefox - кнопка «Прописать» и предложение перезапустить приложение.
-            Без автоподмены в фоне.
+      <section class="hero" aria-label="Главное">
+        <div class="hero-copy">
+          <p class="eyebrow">macOS menu bar · Happ</p>
+          <h1>Стабильный прокси к телефону</h1>
+          <p class="lead">
+            Один раз укажите <code>127.0.0.1</code> в Telegram, Cursor, Firefox или WebStorm. Happ
+            Bridge находит Happ в Wi‑Fi и держит мост, даже когда IP телефона меняется.
           </p>
-        </article>
-        <article class="card">
-          <h2>Безопасный localhost</h2>
-          <p>Слушает только 127.0.0.1 - прокси не открыт соседям по сети.</p>
-        </article>
+          <div class="actions">
+            <a class="btn btn-primary" href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest"
+              >Скачать .dmg 1.1.0</a
+            >
+            <a class="btn btn-ghost" href="#install">Как установить</a>
+          </div>
+          <div class="ports">
+            <span class="port"><b>SOCKS5</b> 127.0.0.1:10808</span>
+            <span class="port"><b>HTTP</b> 127.0.0.1:10809</span>
+          </div>
+        </div>
+
+        <div class="mock" aria-label="Превью окна Happ Bridge">
+          <div class="mock-bar" aria-hidden="true">
+            <span class="mock-dot r"></span><span class="mock-dot y"></span><span class="mock-dot g"></span>
+            <span class="mock-title">Happ Bridge</span>
+          </div>
+          <div class="mock-body">
+            <p class="mock-kicker">Happ Bridge</p>
+            <p class="mock-h">Статус</p>
+            <div class="badge"><i></i> Подключено · 192.168.1.6</div>
+            <p class="mock-sec">Телефоны в сети · 2</p>
+            <div class="peer on"><i></i> 192.168.1.6</div>
+            <div class="peer"><i></i> 192.168.1.9</div>
+            <div class="row"><code>127.0.0.1:10808</code><span>SOCKS5</span></div>
+            <div class="row"><code>127.0.0.1:10809</code><span>HTTP</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="how">
+        <h2 class="sec-title">Что делает приложение</h2>
+        <p class="sec-lead">
+          Relay только на localhost. Системный proxy macOS не трогаем. Прописка в приложения - только
+          по вашей кнопке.
+        </p>
+        <div class="split">
+          <ul class="feature-list">
+            <li>
+              <h3>Адреса не меняются</h3>
+              <p>Приложения всегда ходят на 127.0.0.1. IP телефона живёт только внутри моста.</p>
+            </li>
+            <li>
+              <h3>Несколько телефонов</h3>
+              <p>Находит все Happ в сети - выберите нужный IP в списке.</p>
+            </li>
+            <li>
+              <h3>Прописка вручную</h3>
+              <p>Cursor, WebStorm, Firefox: «Прописать» и предложение перезапустить.</p>
+            </li>
+            <li>
+              <h3>Только localhost</h3>
+              <p>Слушает 127.0.0.1 - соседи по Wi‑Fi ваш прокси не видят.</p>
+            </li>
+          </ul>
+          <div>
+            <div class="tray-mock" aria-label="Превью меню в строке меню">
+              <div class="item dim">Подключено · 192.168.1.6</div>
+              <div class="sep"></div>
+              <div class="item">Скопировать SOCKS5</div>
+              <div class="item">Скопировать HTTP</div>
+              <div class="sep"></div>
+              <div class="item">Найти снова</div>
+              <div class="item">Диагностика</div>
+              <div class="item">Настройки…</div>
+              <div class="sep"></div>
+              <div class="item">Выйти</div>
+            </div>
+            <figcaption style="text-align: center">Меню в строке меню macOS</figcaption>
+          </div>
+        </div>
+      </section>
+
+      <section id="shots">
+        <h2 class="sec-title">Интерфейс</h2>
+        <p class="sec-lead">Окно настроек и прописка в приложения. Клик по иконке открывает меню.</p>
+        <div class="gallery">
+          <figure>
+            <div class="mock">
+              <div class="mock-bar" aria-hidden="true">
+                <span class="mock-dot r"></span><span class="mock-dot y"></span><span class="mock-dot g"></span>
+                <span class="mock-title">Happ Bridge</span>
+              </div>
+              <div class="mock-body">
+                <p class="mock-kicker">Happ Bridge</p>
+                <p class="mock-h">Статус</p>
+                <div class="badge"><i></i> Подключено · 192.168.1.6</div>
+                <div class="row"><code>127.0.0.1:10808</code><span>SOCKS5</span></div>
+                <div class="row"><code>127.0.0.1:10809</code><span>HTTP</span></div>
+              </div>
+            </div>
+            <figcaption>Статус и локальные адреса</figcaption>
+          </figure>
+          <figure>
+            <div class="mock inject-mock">
+              <div class="mock-body">
+                <p class="mock-h" style="font-size: 1rem; margin-top: 0">Прописать в приложения</p>
+                <p class="mock-sec" style="margin-top: 0">
+                  Выберите приложения и нажмите «Прописать». Автоподмены нет.
+                </p>
+                <div class="check"><span class="box on"></span> Cursor</div>
+                <div class="check"><span class="box on"></span> WebStorm</div>
+                <div class="check"><span class="box"></span> Firefox</div>
+                <div class="inject-actions">
+                  <div class="mini">Прописать</div>
+                  <div class="link">Откатить</div>
+                </div>
+              </div>
+            </div>
+            <figcaption>Ручная прописка + перезапуск</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="install">
+        <h2 class="sec-title">Установка</h2>
+        <p class="sec-lead">
+          Сборка без Apple Developer ID. Установщик копирует приложение в «Программы» и снимает
+          quarantine Gatekeeper.
+        </p>
+        <div class="install-grid">
+          <div class="panel">
+            <h3>Шаги</h3>
+            <ol>
+              <li>Скачайте <code>.dmg</code> с GitHub Releases</li>
+              <li>Откройте <strong>Install Happ Bridge.command</strong></li>
+              <li>Нажмите «Установить»</li>
+              <li>Разрешите доступ к локальной сети, если спросит</li>
+            </ol>
+          </div>
+          <div class="panel">
+            <h3>Если macOS блокирует установщик</h3>
+            <p>В Терминале выполните обе строки:</p>
+            <pre><code>xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command"
+open "/Volumes/Happ Bridge/Install Happ Bridge.command"</code></pre>
+          </div>
+        </div>
       </section>
 
       <section class="en" lang="en">
         <h2>Happ Bridge 1.1 for macOS</h2>
-        <p class="lead" style="margin-bottom: 0">
-          Menu bar utility: stable SOCKS5/HTTP localhost bridge to Happ. Multi-peer picker, manual
-          inject for Cursor / WebStorm / Firefox with relaunch prompt. Download from
-          <a href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest">GitHub Releases</a>.
+        <p>
+          Menu bar utility: stable SOCKS5/HTTP localhost bridge to Happ.
+          <a href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest">Download .dmg</a>
         </p>
       </section>
 
       <footer>
-        Open source · MIT · v1.1.0 ·
-        <a href="https://github.com/anatoly-kulishov/happ-bridge">anatoly-kulishov/happ-bridge</a>
-        ·
+        <span>Open source · MIT · v1.1.0</span>
+        <a href="https://github.com/anatoly-kulishov/happ-bridge">GitHub</a>
         <a href="https://github.com/anatoly-kulishov/happ-bridge/blob/main/CHANGELOG.md">Changelog</a>
-        · Not affiliated with Happ / Happ.su
+        <span>Not affiliated with Happ / Happ.su</span>
       </footer>
-    </main>
+    </div>
   </body>
 </html>

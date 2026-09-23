@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 - 2026-09-23
+
+### Changed
+- Landing page redesign: contrast-safe CTAs, transparent bridge logo, crisp CSS UI mocks
+- Site download / install copy aligned with manual inject flow
+
 ## 1.1.0 - 2026-09-23
 
 ### Added
