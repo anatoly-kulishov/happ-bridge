@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Happ Bridge - стабильный прокси к Happ на телефоне для macOS</title>
+    <meta
+      name="description"
+      content="Happ Bridge - menu bar приложение для macOS. Автоматический SOCKS5 и HTTP прокси 127.0.0.1 для Telegram, Cursor, Firefox и WebStorm через Happ на iPhone. IP телефона больше не нужно менять вручную."
+    />
+    <meta
+      name="keywords"
+      content="Happ Bridge, Happ прокси, SOCKS5 macOS, HTTP proxy iPhone, Telegram прокси, Cursor proxy, WebStorm proxy, Firefox proxy, LAN Happ, локальный прокси, смена IP Wi-Fi"
+    />
+    <meta name="author" content="Happ Bridge" />
+    <meta name="robots" content="index,follow" />
+    <link rel="canonical" href="https://anatoly-kulishov.github.io/happ-bridge/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="ru_RU" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:site_name" content="Happ Bridge" />
+    <meta property="og:title" content="Happ Bridge - стабильный прокси к Happ на macOS" />
+    <meta
+      property="og:description"
+      content="Один раз настройте 127.0.0.1:10808 / 10809. Happ Bridge сам находит телефон в Wi-Fi и держит мост к Happ."
+    />
+    <meta property="og:url" content="https://anatoly-kulishov.github.io/happ-bridge/" />
+    <meta property="og:image" content="https://anatoly-kulishov.github.io/happ-bridge/og.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Happ Bridge - стабильный прокси к Happ на macOS" />
+    <meta
+      name="twitter:description"
+      content="Menu bar app: SOCKS5/HTTP localhost bridge to Happ on your phone. For Telegram, Cursor, Firefox, WebStorm."
+    />
+    <meta name="twitter:image" content="https://anatoly-kulishov.github.io/happ-bridge/og.png" />
+
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Happ Bridge",
+        "applicationCategory": "UtilitiesApplication",
+        "operatingSystem": "macOS",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "description": "macOS menu bar app that keeps a stable localhost SOCKS5/HTTP proxy to Happ on your phone for Telegram, Cursor, Firefox and WebStorm.",
+        "url": "https://anatoly-kulishov.github.io/happ-bridge/",
+        "downloadUrl": "https://github.com/anatoly-kulishov/happ-bridge",
+        "softwareVersion": "1.0.0",
+        "license": "https://opensource.org/licenses/MIT",
+        "inLanguage": ["ru", "en"],
+        "keywords": "Happ, SOCKS5, HTTP proxy, macOS, Telegram, Cursor, WebStorm, Firefox, LAN"
+      }
+    </script>
+
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d12;
+        --fg: #f4f4f5;
+        --muted: #a1a1aa;
+        --accent: #38bdf8;
+        --card: #141821;
+        --line: #27272a;
+        --ease: cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        font-family:
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        background:
+          radial-gradient(1200px 600px at 10% -10%, rgb(14 165 233 / 0.18), transparent 55%),
+          radial-gradient(900px 500px at 100% 0%, rgb(56 189 248 / 0.08), transparent 50%),
+          var(--bg);
+        color: var(--fg);
+        line-height: 1.55;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      .wrap {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 4rem 1.25rem 5rem;
+      }
+      .eyebrow {
+        color: var(--accent);
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 0.6rem 0 0.75rem;
+        font-size: clamp(2rem, 5vw, 2.75rem);
+        line-height: 1.1;
+        letter-spacing: -0.03em;
+        text-wrap: balance;
+      }
+      .lead {
+        margin: 0 0 1.75rem;
+        max-width: 38rem;
+        color: var(--muted);
+        font-size: 1.05rem;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-bottom: 2.5rem;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.7rem 1.1rem;
+        border-radius: 0.55rem;
+        font-weight: 600;
+        font-size: 0.95rem;
+        transition:
+          transform 150ms var(--ease),
+          background 150ms var(--ease);
+      }
+      .btn:hover {
+        text-decoration: none;
+      }
+      .btn:active {
+        transform: scale(0.98);
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: #082f49;
+      }
+      .btn-primary:hover {
+        background: #7dd3fc;
+      }
+      .btn-ghost {
+        border: 1px solid var(--line);
+        color: var(--fg);
+        background: transparent;
+      }
+      .btn-ghost:hover {
+        border-color: #52525b;
+      }
+      .grid {
+        display: grid;
+        gap: 0.85rem;
+      }
+      .card {
+        padding: 1rem 1.1rem;
+        border: 1px solid var(--line);
+        border-radius: 0.75rem;
+        background: var(--card);
+      }
+      .card h2 {
+        margin: 0 0 0.35rem;
+        font-size: 1rem;
+      }
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.9em;
+        color: #e2e8f0;
+        background: #0f172a;
+        padding: 0.1rem 0.35rem;
+        border-radius: 0.3rem;
+      }
+      footer {
+        margin-top: 3rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+      .en {
+        margin-top: 2.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--line);
+      }
+      .en h2 {
+        margin: 0 0 0.5rem;
+        font-size: 1.25rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="eyebrow">macOS · Happ · SOCKS5 / HTTP</p>
+      <h1>Стабильный прокси к Happ на телефоне</h1>
+      <p class="lead">
+        Happ Bridge - приложение в строке меню. Один раз укажите
+        <code>127.0.0.1:10808</code> и <code>127.0.0.1:10809</code> в Telegram, Cursor, Firefox или
+        WebStorm. Когда IP телефона меняется, мост обновляется сам.
+      </p>
+
+      <div class="actions">
+        <a class="btn btn-primary" href="https://github.com/anatoly-kulishov/happ-bridge">
+          GitHub репозиторий
+        </a>
+        <a
+          class="btn btn-ghost"
+          href="https://github.com/anatoly-kulishov/happ-bridge#install"
+        >
+          Установка
+        </a>
+      </div>
+
+      <section class="grid" aria-label="Преимущества">
+        <article class="card">
+          <h2>Адреса не меняются</h2>
+          <p>Приложения всегда ходят на localhost. IP телефона живёт только внутри Happ Bridge.</p>
+        </article>
+        <article class="card">
+          <h2>Автопоиск в Wi‑Fi</h2>
+          <p>Находит Happ с открытым LAN-портом, запоминает IP и переподключается при обрыве.</p>
+        </article>
+        <article class="card">
+          <h2>Безопасный localhost</h2>
+          <p>Слушает только 127.0.0.1 - прокси не открыт соседям по сети.</p>
+        </article>
+      </section>
+
+      <section class="en" lang="en">
+        <h2>Happ Bridge for macOS</h2>
+        <p class="lead" style="margin-bottom: 0">
+          Menu bar utility: stable SOCKS5/HTTP localhost bridge to Happ on your phone. Stop editing
+          proxy IPs after every Wi‑Fi lease change.
+        </p>
+      </section>
+
+      <footer>
+        Open source · MIT ·
+        <a href="https://github.com/anatoly-kulishov/happ-bridge">anatoly-kulishov/happ-bridge</a>
+        · Not affiliated with Happ / Happ.su
+      </footer>
+    </main>
+  </body>
+</html>

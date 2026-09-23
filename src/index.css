@@ -1,0 +1,54 @@
+@import 'tailwindcss';
+
+:root {
+  --hb-bg: #0f1115;
+  --hb-accent: #0ea5e9;
+  --hb-ring: rgb(56 189 248 / 0.6);
+  --hb-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --hb-duration: 150ms;
+  --hb-radius: 0.5rem;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  caret-color: var(--hb-accent);
+}
+
+body {
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  background: var(--hb-bg);
+  color: #f4f4f5;
+}
+
+::selection {
+  background: rgb(14 165 233 / 0.28);
+  color: #f8fafc;
+}
+
+:focus-visible {
+  outline: 2px solid var(--hb-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

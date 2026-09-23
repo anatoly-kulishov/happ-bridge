@@ -1,0 +1,90 @@
+{
+  "name": "happ-bridge",
+  "version": "1.0.0",
+  "description": "macOS menu bar app: stable localhost SOCKS5/HTTP bridge to Happ proxy on your phone for Telegram, Cursor, Firefox, WebStorm",
+  "homepage": "https://anatoly-kulishov.github.io/happ-bridge/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anatoly-kulishov/happ-bridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/anatoly-kulishov/happ-bridge/issues"
+  },
+  "keywords": [
+    "happ",
+    "proxy",
+    "socks5",
+    "http-proxy",
+    "macos",
+    "electron",
+    "telegram",
+    "cursor",
+    "menu-bar",
+    "lan",
+    "iphone"
+  ],
+  "main": "dist-electron/main.js",
+  "author": "Happ Bridge",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "tsx scripts/selfcheck.ts",
+    "dist": "npm run build && electron-builder --mac dmg"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vite-plugin-electron": "^0.28.8",
+    "vite-plugin-electron-renderer": "^0.14.6"
+  },
+  "build": {
+    "appId": "app.happbridge.desktop",
+    "productName": "Happ Bridge",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": ".",
+        "filter": ["*.png"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "resources/icon.png",
+      "target": [
+        "dmg"
+      ],
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "Чтобы найти телефон с Happ в вашей Wi-Fi сети",
+        "LSUIElement": true
+      },
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "Happ Bridge"
+    }
+  }
+}
