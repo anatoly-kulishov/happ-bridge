@@ -7,7 +7,7 @@ import {
 } from './discover'
 import { ProxyRelay, probeSocks5 } from './relay'
 import { loadSettings, saveSettings } from './store'
-import { isIpv4, rememberPhoneIp } from './types'
+import { isIpv4, normalizeSettings, rememberPhoneIp, socksAuthFromSettings } from './types'
 import type {
   AppSettings,
   BridgeState,
@@ -119,9 +119,12 @@ export class BridgeSession {
     }
 
     this.errorMessage = null
-    const ok = await probeSocks5(ip, this.settings.socksPort, 600)
+    const auth = socksAuthFromSettings(this.settings)
+    const ok = await probeSocks5(ip, this.settings.socksPort, 600, undefined, auth)
     if (!ok) {
-      this.errorMessage = `Happ не отвечает на ${ip}`
+      this.errorMessage = auth
+        ? `Happ не отвечает на ${ip} (проверьте LAN-пароль)`
+        : `Happ не отвечает на ${ip}`
       this.hooks.onChange()
       return this.getState()
     }
@@ -148,13 +151,17 @@ export class BridgeSession {
 
   async updateSettings(patch: Partial<AppSettings>): Promise<BridgeState> {
     const prev = this.settings
-    this.settings = { ...this.settings, ...patch }
+    this.settings = normalizeSettings({ ...this.settings, ...patch })
     saveSettings(this.settings)
     this.hooks.applyOpenAtLogin(this.settings.openAtLogin)
 
     const portsChanged =
       this.settings.socksPort !== prev.socksPort ||
       this.settings.httpPort !== prev.httpPort
+
+    const authChanged =
+      this.settings.proxyUser !== prev.proxyUser ||
+      this.settings.proxyPassword !== prev.proxyPassword
 
     if (portsChanged) {
       await this.relay.stop()
@@ -166,7 +173,7 @@ export class BridgeSession {
 
     const needsReconnect =
       this.settings.wizardDone &&
-      (portsChanged || patch.manualIp !== undefined)
+      (portsChanged || authChanged || patch.manualIp !== undefined)
 
     if (needsReconnect) {
       await this.connect('user')
@@ -245,6 +252,7 @@ export class BridgeSession {
         preferredIps,
         manualIp: this.settings.manualIp,
         signal: this.discoverAbort.signal,
+        auth: socksAuthFromSettings(this.settings),
       })
 
       this.peers = found
@@ -333,7 +341,13 @@ export class BridgeSession {
       return
     }
 
-    const ok = await probeSocks5(this.phoneIp, this.settings.socksPort, 500)
+    const ok = await probeSocks5(
+      this.phoneIp,
+      this.settings.socksPort,
+      500,
+      undefined,
+      socksAuthFromSettings(this.settings),
+    )
     if (ok) {
       this.probeFails = 0
       return

@@ -10,6 +10,10 @@ export type AppSettings = {
   openAtLogin: boolean
   wizardDone: boolean
   manualIp: string | null
+  /** Happ LAN SOCKS/HTTP login (optional). */
+  proxyUser: string | null
+  /** Happ LAN password; used only when proxyUser or proxyPassword is set. */
+  proxyPassword: string | null
   /** Kept for old configs; inject is manual only. */
   seamlessAppProxy: boolean
   /** Last inject selection (unused for auto). */
@@ -24,6 +28,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   openAtLogin: true,
   wizardDone: false,
   manualIp: null,
+  proxyUser: null,
+  proxyPassword: null,
   seamlessAppProxy: false,
   injectTargets: [],
 }
@@ -122,12 +128,26 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
     wizardDone:
       typeof raw.wizardDone === 'boolean' ? raw.wizardDone : DEFAULT_SETTINGS.wizardDone,
     manualIp: ipv4OrNull(raw.manualIp),
+    proxyUser: stringOrNull(raw.proxyUser),
+    proxyPassword: credentialOrNull(raw.proxyPassword),
     seamlessAppProxy:
       typeof raw.seamlessAppProxy === 'boolean'
         ? raw.seamlessAppProxy
         : DEFAULT_SETTINGS.seamlessAppProxy,
     injectTargets: normalizeInjectTargets(raw.injectTargets),
   }
+}
+
+/** SOCKS5 user/pass when a real login or non-empty password is set. */
+export function socksAuthFromSettings(
+  s: Pick<AppSettings, 'proxyUser' | 'proxyPassword'>,
+): { user: string; pass: string } | null {
+  const user = s.proxyUser
+  const pass = s.proxyPassword
+  const userOk = typeof user === 'string' && user.length > 0
+  const passOk = typeof pass === 'string' && pass.length > 0
+  if (!userOk && !passOk) return null
+  return { user: user ?? '', pass: pass ?? '' }
 }
 
 export function rememberPhoneIp(
@@ -166,6 +186,16 @@ function stringOrNull(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+/**
+ * Password: empty string → null (no auth).
+ * Whitespace-only is kept so a set password cannot silently disable anti-spoof.
+ */
+function credentialOrNull(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  if (value.length === 0) return null
+  return value
 }
 
 export function isIpv4(value: string): boolean {

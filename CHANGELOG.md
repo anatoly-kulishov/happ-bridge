@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.3 - 2026-09-24
+
+### Added
+- Optional Happ LAN login/password: discovery verifies SOCKS5 user/pass; inject and presets include credentials
+- Settings UI for LAN credentials; diagnostics note when auth is set
+- `npm run test:stress` / `test:adversarial` - selfcheck + adversarial suite
+
+### Fixed
+- Soft-clear / peer switch tear down live relay pipes (no stale proxy to old phone)
+- SOCKS5 method `0xff` no longer treated as Happ identity
+- Empty password does not force auth; whitespace password no longer silently disables anti-spoof
+- `updateSettings` runs through `normalizeSettings`
+- SOCKS/HTTP copy presets include credentials when set
+- Probe hard timeout so filtered hosts cannot hang discovery
+
 ## 1.1.2 - 2026-09-23
 
 ### Changed

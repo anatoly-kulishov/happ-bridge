@@ -72,8 +72,10 @@ export class ProxyRelay {
     this.ports = ports
   }
 
-  /** Soft switch / soft-clear: keep listeners; null stops new pipes. */
+  /** Soft switch / soft-clear: keep listeners; drop live pipes when target changes. */
   setPhoneIp(phoneIp: string | null): void {
+    if (phoneIp === this.phoneIp) return
+    this.dropPipes()
     this.phoneIp = phoneIp
   }
 
@@ -102,7 +104,7 @@ export class ProxyRelay {
       this.bound?.httpPort === this.ports.httpPort
 
     if (this.isListening() && portsMatch) {
-      this.phoneIp = phoneIp
+      this.setPhoneIp(phoneIp)
       return
     }
 
@@ -124,16 +126,20 @@ export class ProxyRelay {
   }
 
   async stop(): Promise<void> {
-    for (const pipe of this.pipes) {
-      pipe.client.destroy()
-      pipe.remote.destroy()
-    }
-    this.pipes.clear()
+    this.dropPipes()
     await Promise.all([closeServer(this.socksServer), closeServer(this.httpServer)])
     this.socksServer = null
     this.httpServer = null
     this.phoneIp = null
     this.bound = null
+  }
+
+  private dropPipes(): void {
+    for (const pipe of this.pipes) {
+      pipe.client.destroy()
+      pipe.remote.destroy()
+    }
+    this.pipes.clear()
   }
 
   private listen(port: number): net.Server {
@@ -217,11 +223,14 @@ export function probePort(
     const done = (ok: boolean) => {
       if (settled) return
       settled = true
+      clearTimeout(hardTimer)
       untrack()
       socket.destroy()
       resolve(ok)
     }
 
+    // OS connect to filtered hosts can ignore socket.setTimeout — hard cap.
+    const hardTimer = setTimeout(() => done(false), timeoutMs)
     socket.setTimeout(timeoutMs)
     socket.on('connect', () => done(true))
     socket.on('timeout', () => done(false))
@@ -231,13 +240,17 @@ export function probePort(
 
 /**
  * Happ identity: SOCKS5 greeting must get a 2-byte method reply.
+ * With auth: require method 0x02 and successful RFC1929 login (anti-spoof).
  * Bare TCP accept / echo / silence ⇒ false.
  */
+export type SocksAuth = { user: string; pass: string }
+
 export function probeSocks5(
   host: string,
   port: number,
   timeoutMs = 400,
   signal?: AbortSignal,
+  auth?: SocksAuth | null,
 ): Promise<boolean> {
   return new Promise((resolve) => {
     if (signal?.aborted) {
@@ -248,31 +261,71 @@ export function probeSocks5(
     const socket = net.connect({ host, port })
     let settled = false
     let buf = Buffer.alloc(0)
+    let phase: 'greeting' | 'auth' = 'greeting'
     const untrack = trackAbortSocket(signal, socket)
 
     const done = (ok: boolean) => {
       if (settled) return
       settled = true
+      clearTimeout(hardTimer)
       untrack()
       socket.destroy()
       resolve(ok)
     }
 
+    const hardTimer = setTimeout(() => done(false), timeoutMs)
     socket.setTimeout(timeoutMs)
 
     socket.on('connect', () => {
-      // VER=5, NMETHODS=1, METHOD=no-auth
-      socket.write(Buffer.from([0x05, 0x01, 0x00]))
+      if (auth) {
+        // Only user/pass — open no-auth SOCKS fails when credentials are set.
+        socket.write(Buffer.from([0x05, 0x01, 0x02]))
+      } else {
+        // VER=5, NMETHODS=1, METHOD=no-auth
+        socket.write(Buffer.from([0x05, 0x01, 0x00]))
+      }
     })
 
     socket.on('data', (chunk) => {
       buf = Buffer.concat([buf, chunk])
+
+      if (phase === 'greeting') {
+        if (buf.length < 2) return
+        const ver = buf[0]
+        const method = buf[1]
+        if (ver !== 0x05 || buf.length !== 2) {
+          done(false)
+          return
+        }
+
+        if (!auth) {
+          // Only no-auth or user/pass offered — 0xff is rejection, not Happ.
+          done(method === 0x00 || method === 0x02)
+          return
+        }
+
+        if (method !== 0x02) {
+          done(false)
+          return
+        }
+
+        const u = Buffer.from(auth.user, 'utf8')
+        const p = Buffer.from(auth.pass, 'utf8')
+        if (u.length > 255 || p.length > 255) {
+          done(false)
+          return
+        }
+
+        phase = 'auth'
+        buf = Buffer.alloc(0)
+        socket.write(
+          Buffer.concat([Buffer.from([0x01, u.length]), u, Buffer.from([p.length]), p]),
+        )
+        return
+      }
+
       if (buf.length < 2) return
-      // Exact SOCKS5 reply: VER + METHOD. Reject echoes (3+ bytes of our greeting).
-      const ver = buf[0]
-      const method = buf[1]
-      const methodOk = method === 0x00 || method === 0x02 || method === 0xff
-      done(ver === 0x05 && methodOk && buf.length === 2)
+      done(buf[0] === 0x01 && buf[1] === 0x00 && buf.length === 2)
     })
 
     socket.on('timeout', () => done(false))

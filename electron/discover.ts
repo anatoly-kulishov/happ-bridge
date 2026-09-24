@@ -1,5 +1,5 @@
 import os from 'node:os'
-import { probeSocks5 } from './relay'
+import { probeSocks5, type SocksAuth } from './relay'
 
 export type DiscoverOptions = {
   socksPort: number
@@ -10,6 +10,8 @@ export type DiscoverOptions = {
   signal?: AbortSignal
   /** When false, only probe preferred/manual IPs (tests / narrow reconnect). */
   scanSubnet?: boolean
+  /** Happ LAN credentials — probe requires successful SOCKS5 user/pass. */
+  auth?: SocksAuth | null
 }
 
 /** First hit only (preferred → subnet). Kept for fast reconnect / tests. */
@@ -29,14 +31,16 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
     timeoutMs = 350,
     signal,
     scanSubnet = true,
+    auth = null,
   } = opts
 
   const hits: string[] = []
   const hitSet = new Set<string>()
+  const probeMs = auth ? Math.max(timeoutMs, 500) : timeoutMs
 
   const tryOne = async (ip: string, abort?: AbortSignal): Promise<string | null> => {
     if (signal?.aborted || abort?.aborted) return null
-    const ok = await probeSocks5(ip, socksPort, timeoutMs, abort ?? signal)
+    const ok = await probeSocks5(ip, socksPort, probeMs, abort ?? signal, auth)
     if (signal?.aborted || abort?.aborted) return null
     return ok ? ip : null
   }

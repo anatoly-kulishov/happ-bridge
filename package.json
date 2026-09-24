@@ -1,6 +1,6 @@
 {
   "name": "happ-bridge",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "macOS menu bar app: stable localhost SOCKS5/HTTP bridge to Happ on your phone. Multi-peer picker, manual inject for Cursor/WebStorm/Firefox.",
   "homepage": "https://anatoly-kulishov.github.io/happ-bridge/",
   "repository": {
@@ -31,6 +31,8 @@
     "dev": "vite",
     "build": "vite build",
     "test": "tsx scripts/selfcheck.ts",
+    "test:adversarial": "tsx scripts/stress.ts 1",
+    "test:stress": "tsx scripts/stress.ts 5",
     "prepare:dmg": "bash scripts/prepare-dmg-installer.sh",
     "dist": "npm run prepare:dmg && npm run build && electron-builder --mac dmg"
   },

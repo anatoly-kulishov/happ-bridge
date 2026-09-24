@@ -1,6 +1,7 @@
 import { localIpv4Addresses } from './discover'
 import { ProxyRelay, probeSocks5 } from './relay'
 import type { AppSettings, DiagnosticCheck } from './types'
+import { socksAuthFromSettings } from './types'
 
 export async function runDiagnostics(opts: {
   settings: AppSettings
@@ -11,6 +12,7 @@ export async function runDiagnostics(opts: {
   const { settings, phoneIp, relay, statusConnected } = opts
   const locals = localIpv4Addresses()
   const checks: DiagnosticCheck[] = []
+  const auth = socksAuthFromSettings(settings)
 
   checks.push({
     id: 'wifi',
@@ -28,10 +30,16 @@ export async function runDiagnostics(opts: {
   let happOk = false
   let happDetail = 'Нечего проверять: сначала найдите телефон.'
   if (candidate) {
-    happOk = await probeSocks5(candidate, settings.socksPort, 600)
-    happDetail = happOk
-      ? `Happ отвечает на ${candidate}:${settings.socksPort}`
-      : `Нет ответа на ${candidate}:${settings.socksPort}. Включите Happ и «Разрешить LAN».`
+    happOk = await probeSocks5(candidate, settings.socksPort, 600, undefined, auth)
+    if (happOk) {
+      happDetail = auth
+        ? `Happ отвечает на ${candidate}:${settings.socksPort} (логин ок)`
+        : `Happ отвечает на ${candidate}:${settings.socksPort}`
+    } else {
+      happDetail = auth
+        ? `Нет ответа / неверный логин на ${candidate}:${settings.socksPort}. Проверьте Happ, LAN и пароль.`
+        : `Нет ответа на ${candidate}:${settings.socksPort}. Включите Happ и «Разрешить LAN».`
+    }
   }
 
   checks.push({
@@ -41,6 +49,14 @@ export async function runDiagnostics(opts: {
     detail: happDetail,
   })
 
+  checks.push({
+    id: 'auth',
+    ok: true,
+    label: 'Пароль LAN',
+    detail: auth
+      ? `Логин «${auth.user || '(пусто)'}» задан — подмена без пароля отсекается`
+      : 'Не задан. В Happ можно включить логин/пароль для LAN, затем указать их здесь.',
+  })
   const listening = relay.isListening()
   checks.push({
     id: 'relay',

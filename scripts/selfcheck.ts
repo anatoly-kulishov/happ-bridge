@@ -3,6 +3,7 @@
  */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { localSubnetHosts, prioritizedHosts, pickPreferredPhone, scanAllHosts } from '../electron/discover'
@@ -17,10 +18,11 @@ import {
   upsertFirefoxBlock,
 } from '../electron/inject'
 import { ProxyRelay, probePort, probeSocks5 } from '../electron/relay'
-import { presetText } from '../electron/presets'
+import { httpProxyUrl, presetText } from '../electron/presets'
 import {
   normalizeSettings,
   rememberPhoneIp,
+  socksAuthFromSettings,
   statusPresentation,
 } from '../electron/types'
 
@@ -54,6 +56,31 @@ async function main() {
   )
   assert.equal(statusPresentation('searching', null).tone, 'yellow')
   assert.ok(presetText('telegram', 10808, 10809).includes('SOCKS5'))
+  assert.ok(
+    presetText('telegram', 10808, 10809, { user: 'u', pass: 'p' }).includes('Логин: u'),
+  )
+  assert.equal(
+    httpProxyUrl('127.0.0.1', 10809, { user: 'a@b', pass: 'x y' }),
+    'http://a%40b:x%20y@127.0.0.1:10809',
+  )
+  assert.deepEqual(socksAuthFromSettings(normalizeSettings({})), null)
+  assert.deepEqual(
+    socksAuthFromSettings(normalizeSettings({ proxyUser: 'bob', proxyPassword: 's3' })),
+    { user: 'bob', pass: 's3' },
+  )
+  assert.equal(normalizeSettings({ proxyUser: '  ' }).proxyUser, null)
+  assert.equal(normalizeSettings({ proxyPassword: '' }).proxyPassword, null)
+  assert.deepEqual(
+    socksAuthFromSettings(normalizeSettings({ proxyPassword: '' })),
+    null,
+  )
+  assert.deepEqual(
+    socksAuthFromSettings(normalizeSettings({ proxyPassword: '   ' })),
+    { user: '', pass: '   ' },
+  )
+  assert.ok(
+    presetText('socks', 10808, 10809, { user: 'u', pass: 'p' }).includes('u'),
+  )
   assert.equal(
     pickPreferredPhone(['10.0.0.2', '10.0.0.5'], '10.0.0.5', ['10.0.0.2']),
     '10.0.0.5',
@@ -93,9 +120,25 @@ async function main() {
   assert.equal(restored['http.proxy'], 'http://old:1')
   assert.equal(restored['http.proxySupport'], undefined)
 
+  const mergedAuth = mergeCursorSettings(
+    {},
+    { socksPort: 10808, httpPort: 10809, proxyUser: 'u', proxyPassword: 'p' },
+  )
+  assert.equal(mergedAuth['http.proxy'], 'http://u:p@127.0.0.1:10809')
+
   const xml = buildWebstormXml({ socksPort: 10808, httpPort: 10809 })
   assert.ok(xml.includes('PROXY_HOST" value="127.0.0.1"'))
   assert.ok(xml.includes('PROXY_PORT" value="10808"'))
+  assert.ok(!xml.includes('PROXY_LOGIN'))
+
+  const xmlAuth = buildWebstormXml({
+    socksPort: 10808,
+    httpPort: 10809,
+    proxyUser: 'u&x',
+    proxyPassword: 'p',
+  })
+  assert.ok(xmlAuth.includes('PROXY_LOGIN" value="u&amp;x"'))
+  assert.ok(xmlAuth.includes('PROXY_PASSWORD" value="p"'))
 
   const block = upsertFirefoxBlock('user_pref("foo", 1);\n', {
     socksPort: 10808,
@@ -105,6 +148,37 @@ async function main() {
   assert.ok(block.includes('socks_port", 10808'))
   assert.ok(!stripFirefoxBlock(block).includes('happ-bridge'))
 
+  const blockAuth = upsertFirefoxBlock('', {
+    socksPort: 10808,
+    httpPort: 10809,
+    proxyUser: 'ff',
+    proxyPassword: 'pw',
+  })
+  assert.ok(blockAuth.includes('socks_username", "ff"'))
+  assert.ok(blockAuth.includes('socks_password", "pw"'))
+
+  // SOCKS5 user/pass probe: open no-auth server must fail when credentials set
+  const authPort = await listenSocksAuth('good', 'secret')
+  try {
+    assert.equal(
+      await probeSocks5('127.0.0.1', authPort, 400, undefined, {
+        user: 'good',
+        pass: 'secret',
+      }),
+      true,
+    )
+    assert.equal(
+      await probeSocks5('127.0.0.1', authPort, 400, undefined, {
+        user: 'good',
+        pass: 'wrong',
+      }),
+      false,
+    )
+    // Auth-only server rejects no-auth method → 0xff must not count as Happ
+    assert.equal(await probeSocks5('127.0.0.1', authPort, 400), false)
+  } finally {
+    await closeListen(authPort)
+  }
   assert.equal(
     parseFirefoxDefaultProfile(
       ['[Profile0]', 'Name=x', 'IsRelative=1', 'Path=Profiles/mine', 'Default=1'].join('\n'),
@@ -254,6 +328,63 @@ async function main() {
   }
 
   console.log('selfcheck ok')
+}
+
+const authServers = new Map<number, net.Server>()
+
+/** Minimal SOCKS5 that requires username/password. */
+function listenSocksAuth(user: string, pass: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer((socket) => {
+      let buf = Buffer.alloc(0)
+      let phase: 'greet' | 'auth' = 'greet'
+      socket.on('data', (chunk) => {
+        buf = Buffer.concat([buf, chunk])
+        if (phase === 'greet') {
+          if (buf.length < 2) return
+          const nmethods = buf[1]
+          if (buf.length < 2 + nmethods) return
+          const methods = [...buf.subarray(2, 2 + nmethods)]
+          buf = Buffer.alloc(0)
+          if (methods.includes(0x02)) {
+            socket.write(Buffer.from([0x05, 0x02]))
+            phase = 'auth'
+          } else {
+            socket.write(Buffer.from([0x05, 0xff]))
+            socket.end()
+          }
+          return
+        }
+        if (buf.length < 2) return
+        const ulen = buf[1]
+        if (buf.length < 2 + ulen + 1) return
+        const plen = buf[2 + ulen]
+        if (buf.length < 2 + ulen + 1 + plen) return
+        const u = buf.subarray(2, 2 + ulen).toString('utf8')
+        const p = buf.subarray(3 + ulen, 3 + ulen + plen).toString('utf8')
+        const ok = u === user && p === pass
+        socket.write(Buffer.from([0x01, ok ? 0x00 : 0x01]))
+        socket.end()
+      })
+    })
+    server.listen(0, '127.0.0.1', () => {
+      const addr = server.address()
+      if (!addr || typeof addr === 'string') {
+        reject(new Error('no port'))
+        return
+      }
+      authServers.set(addr.port, server)
+      resolve(addr.port)
+    })
+    server.on('error', reject)
+  })
+}
+
+function closeListen(port: number): Promise<void> {
+  const server = authServers.get(port)
+  authServers.delete(port)
+  if (!server) return Promise.resolve()
+  return new Promise((resolve) => server.close(() => resolve()))
 }
 
 main().catch((err) => {

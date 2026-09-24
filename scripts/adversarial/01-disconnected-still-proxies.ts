@@ -5,10 +5,10 @@
 import assert from 'node:assert/strict'
 import net from 'node:net'
 import { ProxyRelay } from '../../electron/relay'
+import { freePorts } from './_ports'
 
 async function main() {
-  const socks = 49101 + Math.floor(Math.random() * 1000)
-  const http = socks + 1
+  const [socks, http] = await freePorts(2)
   const relay = new ProxyRelay({ socksPort: socks, httpPort: http })
   let client: net.Socket | null = null
   try {

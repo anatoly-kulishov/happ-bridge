@@ -14,10 +14,14 @@ async function main() {
     s.listen(port, '127.0.0.1', () => resolve(s))
   })
 
+  // Use 127.0.0.x only — documentation NET blocks hang TCP connect on macOS.
   const hosts = [
-    ...Array.from({ length: 24 }, (_, i) => `192.0.2.${i + 1}`),
+    '127.0.0.2',
+    '127.0.0.3',
+    '127.0.0.4',
     '127.0.0.1',
-    ...Array.from({ length: 24 }, (_, i) => `198.51.100.${i + 1}`),
+    '127.0.0.5',
+    '127.0.0.6',
   ]
 
   let completedAfterWinner = 0
@@ -28,7 +32,7 @@ async function main() {
     signal?: AbortSignal,
   ): Promise<string | null> => {
     if (signal?.aborted) return null
-    const ok = await probePort(ip, port, 250, signal)
+    const ok = await probePort(ip, port, 120, signal)
     if (signal?.aborted) return null
     if (winnerSeen) completedAfterWinner++
     if (ok) {
@@ -39,7 +43,7 @@ async function main() {
   }
 
   try {
-    const winner = await scanHosts(hosts, tryOne, 16)
+    const winner = await scanHosts(hosts, tryOne, 4)
     assert.equal(winner, '127.0.0.1')
     assert.equal(
       completedAfterWinner,

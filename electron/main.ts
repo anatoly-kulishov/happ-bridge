@@ -19,7 +19,7 @@ import {
 } from './inject'
 import { presetText, type CopyPreset } from './presets'
 import { BridgeSession } from './session'
-import { statusPresentation } from './types'
+import { socksAuthFromSettings, statusPresentation } from './types'
 import type { AppSettings, BridgeStatus } from './types'
 import { createUpdater } from './updater'
 
@@ -208,7 +208,12 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
 
   ipcMain.handle('bridge:copy', (_e, kind: CopyPreset) => {
     const state = session!.getState()
-    const text = presetText(kind, state.settings.socksPort, state.settings.httpPort)
+    const text = presetText(
+      kind,
+      state.settings.socksPort,
+      state.settings.httpPort,
+      socksAuthFromSettings(state.settings),
+    )
     clipboard.writeText(text)
     return text
   })
@@ -277,11 +282,19 @@ function injectBackupPath(): string {
 function injectPortsFromState(s: {
   phoneIp: string | null
   settings: AppSettings
-}): { socksPort: number; httpPort: number; phoneIp: string | null } {
+}): {
+  socksPort: number
+  httpPort: number
+  phoneIp: string | null
+  proxyUser: string | null
+  proxyPassword: string | null
+} {
   return {
     socksPort: s.settings.socksPort,
     httpPort: s.settings.httpPort,
     phoneIp: s.phoneIp ?? s.settings.manualIp ?? s.settings.lastPhoneIp ?? null,
+    proxyUser: s.settings.proxyUser,
+    proxyPassword: s.settings.proxyPassword,
   }
 }
 

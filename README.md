@@ -6,7 +6,7 @@ Set Telegram, Cursor, Firefox, and WebStorm to `127.0.0.1` once. When the phone 
 
 [Русский](#happ-bridge-рус) · [English](#happ-bridge-en) · [Download](#install) · [Site](https://anatoly-kulishov.github.io/happ-bridge/) · [Changelog](CHANGELOG.md)
 
-**Текущая версия:** 1.1.2
+**Текущая версия:** 1.1.3
 
 ---
 
@@ -34,6 +34,7 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 
 - автопоиск Happ в Wi‑Fi; если телефонов несколько - список и выбор вручную
 - локальный TCP-relay только на `127.0.0.1` (соседи по Wi‑Fi не видят прокси)
+- опциональный **логин/пароль Happ LAN** - проверка при поиске и прописка в приложения
 - soft-reconnect: смена IP телефона без обрыва слушателей
 - устойчивость: 3 неудачных probe, пропуск probe при живом трафике, backoff
 - реакция на смену сети
@@ -49,7 +50,7 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 
 #### Готовый .dmg
 
-1. Скачайте `.dmg` с [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases) (файл вида `Happ Bridge-1.1.2-arm64.dmg`).
+1. Скачайте `.dmg` с [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases) (файл вида `Happ Bridge-1.1.3-arm64.dmg`).
 2. Откройте диск и дважды нажмите **Install Happ Bridge.command** → «Установить».
 3. Если macOS блокирует **установщик**, в Терминале:
 
@@ -77,7 +78,7 @@ npm test
 npm run dist
 ```
 
-Готовый файл: `release/Happ Bridge-1.1.2-arm64.dmg`
+Готовый файл: `release/Happ Bridge-1.1.3-arm64.dmg`
 
 Разработка: `npm run dev`
 
@@ -98,7 +99,10 @@ Happ proxy, Happ LAN, SOCKS5 macOS, HTTP proxy iPhone, Telegram proxy, Cursor pr
 - слушатели только на localhost
 - системный proxy macOS не меняется
 - прописка в приложениях - только по вашей кнопке
-- настройки локально в userData Electron
+- опциональный логин/пароль Happ LAN (антиспуф при поиске + прописка в приложения)
+- смена/сброс телефона рвёт живые TCP-pipe
+- настройки локально в userData Electron (в т.ч. пароль LAN - берегите аккаунт Mac)
+- мост **не шифрует** Wi‑Fi Mac↔телефон; туннель шифрует Happ
 - исходный код открыт (MIT) - см. [SECURITY.md](SECURITY.md)
 
 ### Стек
@@ -117,7 +121,7 @@ Electron · Vite · React · TypeScript · Tailwind
 
 Stable localhost proxy bridge to a phone running Happ on your LAN. Stop editing proxy IPs in Telegram, Cursor, Firefox, and WebStorm every time DHCP moves your phone.
 
-**Version 1.1.2** - multi-peer picker, manual app inject with restart prompt, Gatekeeper-friendly DMG installer.
+**Version 1.1.3** - LAN auth, relay pipe hygiene, multi-peer picker, manual app inject, Gatekeeper-friendly DMG.
 
 ### Quick start
 

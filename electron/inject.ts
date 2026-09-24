@@ -3,8 +3,26 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import { httpProxyUrl } from './presets'
 
 const execFileAsync = promisify(execFile)
+
+function injectAuth(ports: InjectPorts): { user: string; pass: string } | null {
+  const user = ports.proxyUser
+  const pass = ports.proxyPassword
+  const userOk = typeof user === 'string' && user.length > 0
+  const passOk = typeof pass === 'string' && pass.length > 0
+  if (!userOk && !passOk) return null
+  return { user: user ?? '', pass: pass ?? '' }
+}
+
+function xmlEscape(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
 
 export type InjectTarget = 'cursor' | 'webstorm' | 'firefox'
 
@@ -16,6 +34,9 @@ export type InjectPorts = {
    * When leaving 127.0.0.1, we restore here — not "system proxy".
    */
   phoneIp?: string | null
+  /** Happ LAN credentials (optional). */
+  proxyUser?: string | null
+  proxyPassword?: string | null
 }
 
 export type InjectTargetInfo = {
@@ -80,6 +101,8 @@ const FF_PROXY_KEYS = [
   'network.proxy.socks_port',
   'network.proxy.socks_version',
   'network.proxy.socks_remote_dns',
+  'network.proxy.socks_username',
+  'network.proxy.socks_password',
 ] as const
 
 const FF_BEGIN = '// BEGIN happ-bridge managed'
@@ -256,7 +279,7 @@ export function mergeCursorSettings(
 ): Record<string, unknown> {
   return {
     ...raw,
-    'http.proxy': `http://127.0.0.1:${ports.httpPort}`,
+    'http.proxy': httpProxyUrl('127.0.0.1', ports.httpPort, injectAuth(ports)),
     'http.proxySupport': 'override',
     'cursor.general.disableHttp2': true,
   }
@@ -278,22 +301,31 @@ export function restoreCursorSettings(
 }
 
 export function buildWebstormXml(ports: InjectPorts): string {
-  return [
+  const auth = injectAuth(ports)
+  const lines = [
     '<application>',
     '  <component name="HttpConfigurable">',
     '    <option name="USE_HTTP_PROXY" value="true" />',
     '    <option name="PROXY_TYPE_IS_SOCKS" value="true" />',
     '    <option name="PROXY_HOST" value="127.0.0.1" />',
     `    <option name="PROXY_PORT" value="${ports.socksPort}" />`,
+  ]
+  if (auth) {
+    lines.push(`    <option name="PROXY_LOGIN" value="${xmlEscape(auth.user)}" />`)
+    lines.push(`    <option name="PROXY_PASSWORD" value="${xmlEscape(auth.pass)}" />`)
+  }
+  lines.push(
     '    <option name="PROXY_EXCEPTIONS" value="" />',
     '    <option name="PAC_URL" value="" />',
     '  </component>',
     '</application>',
     '',
-  ].join('\n')
+  )
+  return lines.join('\n')
 }
 
 export function upsertFirefoxBlock(content: string, ports: InjectPorts): string {
+  const auth = injectAuth(ports)
   const block = [
     FF_BEGIN,
     'user_pref("network.proxy.type", 1);',
@@ -301,6 +333,12 @@ export function upsertFirefoxBlock(content: string, ports: InjectPorts): string 
     `user_pref("network.proxy.socks_port", ${ports.socksPort});`,
     'user_pref("network.proxy.socks_version", 5);',
     'user_pref("network.proxy.socks_remote_dns", true);',
+    ...(auth
+      ? [
+          `user_pref("network.proxy.socks_username", ${JSON.stringify(auth.user)});`,
+          `user_pref("network.proxy.socks_password", ${JSON.stringify(auth.pass)});`,
+        ]
+      : []),
     FF_END,
   ].join('\n')
 
@@ -637,7 +675,30 @@ export function firefoxRestorePrefs(
     'network.proxy.socks_port': port,
     'network.proxy.socks_version': version,
     'network.proxy.socks_remote_dns': remoteDns,
+    ...(authRestore(ports, previous) ?? {}),
   }
+}
+
+function authRestore(
+  ports: InjectPorts,
+  previous: Record<string, PrefScalar | null>,
+): Record<string, PrefScalar> | null {
+  const auth = injectAuth(ports)
+  if (auth) {
+    return {
+      'network.proxy.socks_username': auth.user,
+      'network.proxy.socks_password': auth.pass,
+    }
+  }
+  const user = previous['network.proxy.socks_username']
+  const pass = previous['network.proxy.socks_password']
+  if (typeof user === 'string' || typeof pass === 'string') {
+    return {
+      ...(typeof user === 'string' ? { 'network.proxy.socks_username': user } : {}),
+      ...(typeof pass === 'string' ? { 'network.proxy.socks_password': pass } : {}),
+    }
+  }
+  return null
 }
 
 function upsertFirefoxPrefsBlock(
@@ -655,13 +716,19 @@ function upsertFirefoxPrefsBlock(
 }
 
 function applyFirefoxPrefs(content: string, ports: InjectPorts): string {
-  return writeFirefoxPrefs(content, {
+  const auth = injectAuth(ports)
+  const prefs: Record<string, PrefScalar> = {
     'network.proxy.type': 1,
     'network.proxy.socks': '127.0.0.1',
     'network.proxy.socks_port': ports.socksPort,
     'network.proxy.socks_version': 5,
     'network.proxy.socks_remote_dns': true,
-  })
+  }
+  if (auth) {
+    prefs['network.proxy.socks_username'] = auth.user
+    prefs['network.proxy.socks_password'] = auth.pass
+  }
+  return writeFirefoxPrefs(content, prefs)
 }
 
 function writeFirefoxPrefs(

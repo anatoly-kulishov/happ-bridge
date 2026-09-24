@@ -17,6 +17,8 @@ export function Settings({ state, onState, onShowWizard }: Props) {
   const [manualIp, setManualIp] = useState(state.settings.manualIp ?? '')
   const [socksPort, setSocksPort] = useState(String(state.settings.socksPort))
   const [httpPort, setHttpPort] = useState(String(state.settings.httpPort))
+  const [proxyUser, setProxyUser] = useState(state.settings.proxyUser ?? '')
+  const [proxyPassword, setProxyPassword] = useState(state.settings.proxyPassword ?? '')
   const [openAtLogin, setOpenAtLogin] = useState(state.settings.openAtLogin)
   const [saved, setSaved] = useState(false)
   const [advanced, setAdvanced] = useState(false)
@@ -38,10 +40,13 @@ export function Settings({ state, onState, onShowWizard }: Props) {
   const save = async () => {
     setSaving(true)
     try {
+      const user = proxyUser.trim() || null
       const next = await window.happBridge.saveSettings({
         manualIp: manualIp.trim() || null,
         socksPort: parsePort(socksPort, DEFAULT_SETTINGS.socksPort),
         httpPort: parsePort(httpPort, DEFAULT_SETTINGS.httpPort),
+        proxyUser: user,
+        proxyPassword: user != null || proxyPassword.length > 0 ? proxyPassword : null,
         openAtLogin,
       })
       onState(next)
@@ -155,6 +160,26 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           Запускать при входе в macOS
         </label>
 
+        <div className="mt-5 space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
+          <div>
+            <p className="text-sm font-medium text-zinc-200">Пароль Happ (LAN)</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
+              Те же логин и пароль, что в Happ при «Разрешить LAN». Нужны, чтобы соседи по Wi‑Fi
+              не подставляли чужой SOCKS и не пользовались вашим выходом.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Логин" value={proxyUser} onChange={setProxyUser} placeholder="user" />
+            <Field
+              label="Пароль"
+              value={proxyPassword}
+              onChange={setProxyPassword}
+              placeholder="••••"
+              type="password"
+            />
+          </div>
+        </div>
+
         <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2.5 text-xs leading-relaxed text-zinc-400">
           <p>{state.update.message}</p>
           <button
@@ -249,21 +274,25 @@ function Field({
   value,
   onChange,
   placeholder,
+  type = 'text',
 }: {
   label: string
   hint?: string
   value: string
   onChange: (v: string) => void
   placeholder?: string
+  type?: 'text' | 'password'
 }) {
   return (
     <label className="block text-sm">
       <span className="text-zinc-400">{label}</span>
       {hint && <span className="mt-0.5 block text-xs text-zinc-600">{hint}</span>}
       <input
+        type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        autoComplete="off"
         className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 font-mono text-sm text-white outline-none transition-colors duration-150 focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400/50"
       />
     </label>

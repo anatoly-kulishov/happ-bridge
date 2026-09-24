@@ -80,6 +80,7 @@ export function Wizard({ state, onDone, onState }: Props) {
                 <li>
                   Включите тумблер{' '}
                   <strong className="text-white">Разрешить LAN подключение</strong>.
+                  Если есть логин/пароль для LAN - позже укажите их в настройках Bridge.
                 </li>
                 <li>Телефон и компьютер должны быть в одной Wi‑Fi сети.</li>
               </ol>

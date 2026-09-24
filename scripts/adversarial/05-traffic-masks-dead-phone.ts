@@ -5,12 +5,12 @@
 import assert from 'node:assert/strict'
 import net from 'node:net'
 import { ProxyRelay } from '../../electron/relay'
+import { freePorts } from './_ports'
 
 const TRAFFIC_FRESH_MS = 15_000
 
 async function main() {
-  const socks = 48501
-  const http = 48502
+  const [socks, http] = await freePorts(2)
 
   // Local listeners so relay.start succeeds; phone target is blackhole IP
   // that won't accept (use 127.0.0.1 with nothing on remote side of FORWARD port —
