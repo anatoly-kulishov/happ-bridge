@@ -5,12 +5,20 @@ export function StatusBadge({
   status,
   phoneIp,
   lanAuthOn = false,
+  enabled = true,
 }: {
   status: BridgeStatus
   phoneIp: string | null
   lanAuthOn?: boolean
+  enabled?: boolean
 }) {
-  const item = statusPresentation(status, phoneIp)
+  const item = enabled
+    ? statusPresentation(status, phoneIp)
+    : {
+        label: 'Мост выключен',
+        badgeClass: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30',
+        dotClass: 'bg-zinc-400',
+      }
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -22,7 +30,7 @@ export function StatusBadge({
         <span className={`h-2 w-2 shrink-0 rounded-full ${item.dotClass}`} aria-hidden />
         {item.label}
       </div>
-      {lanAuthOn && (
+      {lanAuthOn && enabled && (
         <span className="inline-flex items-center rounded-lg border border-sky-500/35 bg-sky-500/15 px-2.5 py-1.5 text-xs font-medium text-sky-200">
           LAN auth
         </span>

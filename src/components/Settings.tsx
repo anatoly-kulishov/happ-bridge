@@ -29,6 +29,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
   const [saving, setSaving] = useState(false)
   const [selecting, setSelecting] = useState(false)
   const [markingHome, setMarkingHome] = useState(false)
+  const [toggling, setToggling] = useState(false)
 
   const selectPeer = async (ip: string) => {
     setSelecting(true)
@@ -45,6 +46,24 @@ export function Settings({ state, onState, onShowWizard }: Props) {
       onState(await window.happBridge.markHomeNetwork())
     } finally {
       setMarkingHome(false)
+    }
+  }
+
+  const toggleBridge = async (on: boolean) => {
+    setToggling(true)
+    try {
+      onState(await window.happBridge.setEnabled(on))
+    } finally {
+      setToggling(false)
+    }
+  }
+
+  const disconnectPhone = async () => {
+    setToggling(true)
+    try {
+      onState(await window.happBridge.disconnect())
+    } finally {
+      setToggling(false)
     }
   }
 
@@ -91,7 +110,43 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           status={state.status}
           phoneIp={state.phoneIp}
           lanAuthOn={state.lanAuthOn}
+          enabled={state.settings.enabled}
         />
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-200">
+            <input
+              type="checkbox"
+              checked={state.settings.enabled}
+              disabled={toggling}
+              onChange={(e) => void toggleBridge(e.target.checked)}
+              className="size-4 rounded border-zinc-600 accent-sky-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+            />
+            Мост к Happ
+          </label>
+          {state.settings.enabled && state.status === 'connected' && (
+            <button
+              type="button"
+              disabled={toggling}
+              onClick={() => void disconnectPhone()}
+              className="min-h-9 rounded-lg border border-zinc-700 px-3 text-xs font-medium text-zinc-300 transition-colors duration-150 hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+            >
+              Отключить телефон
+            </button>
+          )}
+        </div>
+        {!state.settings.enabled && (
+          <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+            Автопоиск выключен. Включите мост или нажмите «Найти снова» / выберите IP в списке.
+          </p>
+        )}
+        {state.settings.enabled &&
+          state.status === 'disconnected' &&
+          state.peers.length > 1 && (
+            <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+              Найдено несколько телефонов - выберите нужный в списке.
+            </p>
+          )}
 
         {state.publicWifiNoAuth && (
           <div className="mt-3 rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-50">
@@ -162,7 +217,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
             />
             <ProxyCopyButton
               label="Cursor / IDE"
-              value="HTTP · шпаргалка"
+              value="SOCKS5 · шпаргалка"
               copied={copied === 'cursor'}
               onCopy={() => void copy('cursor')}
             />

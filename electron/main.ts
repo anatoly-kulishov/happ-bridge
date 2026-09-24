@@ -129,6 +129,7 @@ function syncTray(state: {
   httpLocal: string
   lanAuthOn: boolean
   publicWifiNoAuth: boolean
+  settings: { enabled: boolean }
 }): void {
   if (!tray || !session) return
   const ui = statusPresentation(state.status, state.phoneIp)
@@ -137,16 +138,21 @@ function syncTray(state: {
     lanAuthOn: state.lanAuthOn,
     publicWifiNoAuth: state.publicWifiNoAuth,
   })
-  const key = `${state.status}|${state.phoneIp ?? ''}|${sec.cacheKey}`
+  const enabled = state.settings.enabled
+  const tip = enabled ? sec.tip : 'Happ Bridge · мост выключен'
+  const key = `${state.status}|${state.phoneIp ?? ''}|${sec.cacheKey}|${enabled ? 1 : 0}`
   if (key === lastTrayKey) return
   lastTrayKey = key
 
-  tray.setImage(trayIcon(ui.tone))
-  tray.setToolTip(sec.tip)
+  tray.setImage(trayIcon(enabled ? ui.tone : 'red'))
+  tray.setToolTip(tip)
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: ui.label, enabled: false },
-      ...(sec.menuLabel
+      {
+        label: enabled ? ui.label : 'Мост выключен',
+        enabled: false,
+      },
+      ...(sec.menuLabel && enabled
         ? [{ label: sec.menuLabel, enabled: false as const }]
         : []),
       { type: 'separator' },
@@ -159,6 +165,22 @@ function syncTray(state: {
         click: () => clipboard.writeText(state.httpLocal),
       },
       { type: 'separator' },
+      {
+        label: enabled ? 'Отключить мост' : 'Включить мост',
+        click: () => {
+          void session?.setEnabled(!enabled).then(() => broadcast())
+        },
+      },
+      ...(enabled && state.status === 'connected'
+        ? [
+            {
+              label: 'Отключить телефон',
+              click: () => {
+                void session?.disconnect().then(() => broadcast())
+              },
+            },
+          ]
+        : []),
       {
         label: 'Найти снова',
         click: () => {
@@ -209,6 +231,12 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
   ipcMain.handle('bridge:findPhone', async () => {
     const ok = await session!.connect('user')
     return { ok, state: session!.getState() }
+  })
+
+  ipcMain.handle('bridge:disconnect', async () => session!.disconnect())
+
+  ipcMain.handle('bridge:setEnabled', async (_e, enabled: boolean) => {
+    return session!.setEnabled(Boolean(enabled))
   })
 
   ipcMain.handle('bridge:selectPhone', async (_e, ip: string) => {
@@ -327,7 +355,9 @@ app.whenReady().then(async () => {
 
   if (!session.getState().settings.wizardDone) createWindow(true)
 
-  await session.connect('startup')
+  if (session.getState().settings.enabled) {
+    await session.connect('startup')
+  }
   session.startWatch()
 
   if (!isDev) void updater.check()

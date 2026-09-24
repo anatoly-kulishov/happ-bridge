@@ -112,8 +112,10 @@ export class ProxyRelay {
     this.phoneIp = phoneIp
 
     try {
-      this.socksServer = this.listen(this.ports.socksPort)
-      this.httpServer = this.listen(this.ports.httpPort)
+      // Happ LAN is SOCKS5 on socksPort; local HTTP port is a second entry that
+      // still tunnels to the same remote SOCKS (phone has no separate :httpPort).
+      this.socksServer = this.listen(this.ports.socksPort, this.ports.socksPort)
+      this.httpServer = this.listen(this.ports.httpPort, this.ports.socksPort)
       await Promise.all([
         waitListen(this.socksServer),
         waitListen(this.httpServer),
@@ -142,14 +144,14 @@ export class ProxyRelay {
     this.pipes.clear()
   }
 
-  private listen(port: number): net.Server {
+  private listen(localPort: number, remotePort: number): net.Server {
     const server = net.createServer((client) => {
       if (!this.phoneIp) {
         client.destroy()
         return
       }
 
-      const remote = net.connect({ host: this.phoneIp, port }, () => {
+      const remote = net.connect({ host: this.phoneIp, port: remotePort }, () => {
         client.pipe(remote)
         remote.pipe(client)
       })
@@ -179,7 +181,7 @@ export class ProxyRelay {
     })
 
     server.on('error', (err) => this.onError?.(err))
-    server.listen(port, '127.0.0.1')
+    server.listen(localPort, '127.0.0.1')
     return server
   }
 }

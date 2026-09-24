@@ -96,6 +96,7 @@ export function Wizard({ state, onDone, onState }: Props) {
                 status={state.status}
                 phoneIp={state.phoneIp}
                 lanAuthOn={state.lanAuthOn}
+                enabled={state.settings.enabled}
               />
               <p className="text-sm text-zinc-400">
                 Нажмите кнопку - найдём телефоны с Happ в сети. Если их несколько,

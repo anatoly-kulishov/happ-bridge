@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
-import { httpProxyUrl } from './presets'
+import { socksProxyUrl } from './presets'
 
 const execFileAsync = promisify(execFile)
 
@@ -278,7 +278,8 @@ export function mergeCursorSettings(
 ): Record<string, unknown> {
   return {
     ...raw,
-    'http.proxy': httpProxyUrl('127.0.0.1', ports.httpPort, injectAuth(ports)),
+    // Happ is SOCKS5 on socksPort; Chromium accepts socks5:// in http.proxy.
+    'http.proxy': socksProxyUrl('127.0.0.1', ports.socksPort, injectAuth(ports)),
     'http.proxySupport': 'override',
     'cursor.general.disableHttp2': true,
   }

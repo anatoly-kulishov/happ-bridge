@@ -71,6 +71,8 @@ export class BridgeSession {
   private lastNetFp = networkFingerprint()
   private announcedFirstConnect = false
   private lastLostNotifyAt = 0
+  /** After Disconnect: skip auto reconnect until user Find / select. */
+  private holdOff = false
 
   private readonly relay: ProxyRelay
   private readonly hooks: SessionHooks
@@ -147,6 +149,14 @@ export class BridgeSession {
   }
 
   async connect(reason: ConnectReason): Promise<boolean> {
+    if (!this.settings.enabled) {
+      if (reason !== 'user') return false
+      this.settings = { ...this.settings, enabled: true }
+      await saveSettings(this.settings)
+    }
+    if (this.holdOff && reason !== 'user') return false
+    if (reason === 'user') this.holdOff = false
+
     if (this.connectInFlight) {
       this.discoverAbort?.abort()
       await this.connectInFlight.catch(() => false)
@@ -161,6 +171,42 @@ export class BridgeSession {
     }
   }
 
+  /** Tear down relay; stay off until Find / select (or enable). */
+  async disconnect(): Promise<BridgeState> {
+    this.holdOff = true
+    this.discoverAbort?.abort()
+    this.errorMessage = null
+    await this.relay.stop()
+    this.phoneIp = null
+    this.peers = []
+    this.setStatus('disconnected')
+    return this.getState()
+  }
+
+  async setEnabled(enabled: boolean): Promise<BridgeState> {
+    if (this.settings.enabled === enabled) {
+      if (enabled && this.holdOff) {
+        this.holdOff = false
+        await this.connect('user')
+      }
+      return this.getState()
+    }
+    this.settings = { ...this.settings, enabled }
+    await saveSettings(this.settings)
+    if (!enabled) {
+      this.holdOff = true
+      this.discoverAbort?.abort()
+      await this.relay.stop()
+      this.phoneIp = null
+      this.setStatus('disconnected')
+      return this.getState()
+    }
+    this.holdOff = false
+    if (this.settings.wizardDone) await this.connect('user')
+    else this.hooks.onChange()
+    return this.getState()
+  }
+
   /** Switch to a peer from the last scan (or force-connect if still reachable). */
   async selectPhone(ip: string): Promise<BridgeState> {
     if (!isIpv4(ip)) {
@@ -169,6 +215,11 @@ export class BridgeSession {
       return this.getState()
     }
 
+    if (!this.settings.enabled) {
+      this.settings = { ...this.settings, enabled: true }
+      await saveSettings(this.settings)
+    }
+    this.holdOff = false
     this.errorMessage = null
     const auth = socksAuthFromSettings(this.settings)
     const ok = await probeSocks5(ip, this.settings.socksPort, 600, undefined, auth)
@@ -234,7 +285,18 @@ export class BridgeSession {
 
     const needsReconnect =
       this.settings.wizardDone &&
+      this.settings.enabled &&
+      !this.holdOff &&
       (portsChanged || authChanged || patch.manualIp !== undefined)
+
+    if (patch.enabled === false) {
+      return this.disconnect()
+    }
+    if (patch.enabled === true && !prev.enabled) {
+      this.holdOff = false
+      await this.connect('user')
+      return this.getState()
+    }
 
     if (needsReconnect) {
       await this.connect('user')
@@ -266,6 +328,7 @@ export class BridgeSession {
   }
 
   onNetworkMaybeChanged(): void {
+    if (!this.settings.enabled || this.holdOff) return
     const fp = networkFingerprint()
     if (fp === this.lastNetFp) return
     this.lastNetFp = fp
@@ -331,7 +394,6 @@ export class BridgeSession {
         manualIp: this.settings.manualIp,
         preferredIps,
         currentIp: this.phoneIp,
-        reason,
       })
 
       if (!chosen) {
@@ -373,6 +435,7 @@ export class BridgeSession {
         this.status === 'disconnected' ? this.idleDelayMs : BASE_WATCH_MS
       await sleep(wait, signal)
       if (this.disposed || this.connectInFlight) continue
+      if (!this.settings.enabled || this.holdOff) continue
 
       if (this.status === 'connected' && this.phoneIp) {
         await this.healthCheck()

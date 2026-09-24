@@ -2,6 +2,17 @@ export type CopyPreset = 'socks' | 'http' | 'telegram' | 'cursor'
 
 export type PresetAuth = { user: string; pass: string } | null | undefined
 
+export function socksProxyUrl(
+  host: string,
+  port: number,
+  auth?: PresetAuth,
+): string {
+  if (auth) {
+    return `socks5://${encodeURIComponent(auth.user)}:${encodeURIComponent(auth.pass)}@${host}:${port}`
+  }
+  return `socks5://${host}:${port}`
+}
+
 export function httpProxyUrl(
   host: string,
   port: number,
@@ -16,18 +27,19 @@ export function httpProxyUrl(
 export function presetText(
   kind: CopyPreset,
   socksPort: number,
-  httpPort: number,
+  _httpPort: number,
   auth?: PresetAuth,
 ): string {
   switch (kind) {
     case 'socks':
       return auth
-        ? `socks5://${encodeURIComponent(auth.user)}:${encodeURIComponent(auth.pass)}@127.0.0.1:${socksPort}`
+        ? socksProxyUrl('127.0.0.1', socksPort, auth)
         : `127.0.0.1:${socksPort}`
     case 'http':
+      // Local HTTP listener tunnels to Happ SOCKS — same port apps must use.
       return auth
-        ? httpProxyUrl('127.0.0.1', httpPort, auth)
-        : `127.0.0.1:${httpPort}`
+        ? socksProxyUrl('127.0.0.1', socksPort, auth)
+        : `127.0.0.1:${socksPort}`
     case 'telegram':
       return [
         'Telegram → Настройки → Данные и память → Прокси → Добавить прокси',
@@ -40,12 +52,10 @@ export function presetText(
       ].join('\n')
     case 'cursor':
       return [
-        'Cursor / VS Code / WebStorm → HTTP Proxy',
-        auth
-          ? `URL: ${httpProxyUrl('127.0.0.1', httpPort, auth)}`
-          : `Host: 127.0.0.1\nPort: ${httpPort}`,
-        'Или SOCKS5:',
-        'Host: 127.0.0.1',
+        'Cursor / VS Code → Settings → http.proxy',
+        `URL: ${socksProxyUrl('127.0.0.1', socksPort, auth)}`,
+        '',
+        'WebStorm / Firefox / Telegram: SOCKS5 127.0.0.1',
         `Port: ${socksPort}`,
         ...(auth ? [`Логин: ${auth.user}`, `Пароль: ${auth.pass}`] : []),
       ].join('\n')

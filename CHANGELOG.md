@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.5 - 2026-09-24
+
+### Added
+- Toggle to disable the Happ bridge entirely (Settings + tray); persists across restarts
+- «Отключить телефон» - soft disconnect without auto-reconnect until Find / peer select
+
+### Fixed
+- Local HTTP listener (`:10809`) forwarded to phone `:10809`; Happ only serves SOCKS on `:10808` - both local ports now tunnel to phone SOCKS
+- Cursor inject / presets used `http://…:10809`; now `socks5://…:10808`
+
+### Changed
+- Multi-peer discovery no longer auto-binds the first IP; choose from the list (or preferred / single peer)
+
 ## 1.1.4 - 2026-09-24
 
 ### Added

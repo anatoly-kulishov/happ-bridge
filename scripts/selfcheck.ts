@@ -38,6 +38,7 @@ import {
   rememberSsidPeer,
   shouldWarnPublicNoAuth,
 } from '../electron/wifi'
+import { freePorts } from './adversarial/_ports'
 
 async function main() {
   assert.equal(normalizeSettings({ socksPort: 99999 }).socksPort, 10808)
@@ -158,7 +159,6 @@ async function main() {
       manualIp: null,
       preferredIps: [],
       currentIp: null,
-      reason: 'user',
     }),
     null,
   )
@@ -166,12 +166,22 @@ async function main() {
     chooseDiscoveredPeer({
       found: ['10.0.0.2', '10.0.0.5'],
       manualIp: null,
+      preferredIps: ['10.0.0.5'],
+      currentIp: null,
+    }),
+    '10.0.0.5',
+  )
+  assert.equal(
+    chooseDiscoveredPeer({
+      found: ['10.0.0.2'],
+      manualIp: null,
       preferredIps: [],
       currentIp: null,
-      reason: 'startup',
     }),
     '10.0.0.2',
   )
+  assert.equal(normalizeSettings({}).enabled, true)
+  assert.equal(normalizeSettings({ enabled: false }).enabled, false)
   assert.equal(
     pickPreferredPhone(['10.0.0.2', '10.0.0.5'], '10.0.0.5', ['10.0.0.2']),
     '10.0.0.5',
@@ -201,11 +211,38 @@ async function main() {
   await relay.stop()
   assert.equal(await probePort('127.0.0.1', 39331), false)
 
+  // Local HTTP port must tunnel to phone SOCKS port (Happ has no :httpPort).
+  {
+    const [socks, http] = await freePorts(2)
+    let hit = false
+    const phone = net.createServer((c) => {
+      hit = true
+      c.end()
+    })
+    // Bind phone on ::1 so local 127.0.0.1:socks can still listen.
+    await new Promise<void>((resolve, reject) => {
+      phone.once('error', reject)
+      phone.listen(socks, '::1', () => resolve())
+    })
+    const r = new ProxyRelay({ socksPort: socks, httpPort: http })
+    await r.start('::1')
+    await new Promise<void>((resolve, reject) => {
+      const c = net.connect({ host: '127.0.0.1', port: http }, () => {
+        c.end()
+      })
+      c.on('close', () => resolve())
+      c.on('error', reject)
+    })
+    await r.stop()
+    await new Promise<void>((resolve) => phone.close(() => resolve()))
+    assert.equal(hit, true, 'HTTP local must dial phone SOCKS port')
+  }
+
   const merged = mergeCursorSettings(
     { 'http.proxy': 'http://old:1', theme: 'dark' },
     { socksPort: 10808, httpPort: 10809 },
   )
-  assert.equal(merged['http.proxy'], 'http://127.0.0.1:10809')
+  assert.equal(merged['http.proxy'], 'socks5://127.0.0.1:10808')
   assert.equal(merged.theme, 'dark')
   const restored = restoreCursorSettings(merged, { 'http.proxy': 'http://old:1' })
   assert.equal(restored['http.proxy'], 'http://old:1')
@@ -215,7 +252,7 @@ async function main() {
     {},
     { socksPort: 10808, httpPort: 10809, proxyUser: 'u', proxyPassword: 'p' },
   )
-  assert.equal(mergedAuth['http.proxy'], 'http://u:p@127.0.0.1:10809')
+  assert.equal(mergedAuth['http.proxy'], 'socks5://u:p@127.0.0.1:10808')
 
   const xml = buildWebstormXml({ socksPort: 10808, httpPort: 10809 })
   assert.ok(xml.includes('PROXY_HOST" value="127.0.0.1"'))
@@ -332,7 +369,7 @@ async function main() {
       string,
       unknown
     >
-    assert.equal(cursorAfter['http.proxy'], 'http://127.0.0.1:10809')
+    assert.equal(cursorAfter['http.proxy'], 'socks5://127.0.0.1:10808')
     assert.equal(cursorAfter.keep, true)
 
     const wsAfter = fs.readFileSync(wsFile, 'utf8')

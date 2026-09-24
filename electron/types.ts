@@ -8,6 +8,8 @@ export type AppSettings = {
   socksPort: number
   httpPort: number
   openAtLogin: boolean
+  /** When false, never connect / reconnect to Happ until user turns it on. */
+  enabled: boolean
   wizardDone: boolean
   manualIp: string | null
   /** Happ LAN SOCKS/HTTP login (optional). */
@@ -33,6 +35,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   socksPort: 10808,
   httpPort: 10809,
   openAtLogin: true,
+  enabled: true,
   wizardDone: false,
   manualIp: null,
   proxyUser: null,
@@ -166,6 +169,7 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
     httpPort,
     openAtLogin:
       typeof raw.openAtLogin === 'boolean' ? raw.openAtLogin : DEFAULT_SETTINGS.openAtLogin,
+    enabled: typeof raw.enabled === 'boolean' ? raw.enabled : DEFAULT_SETTINGS.enabled,
     wizardDone:
       typeof raw.wizardDone === 'boolean' ? raw.wizardDone : DEFAULT_SETTINGS.wizardDone,
     manualIp: ipv4OrNull(raw.manualIp),

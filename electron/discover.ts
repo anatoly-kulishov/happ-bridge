@@ -121,21 +121,19 @@ export function preferredIpsFromSettings(
 
 /**
  * Choose which online peer to bind.
- * User-initiated multi-peer with no preference → null (UI must pick).
+ * Preference / single peer / current → auto. Otherwise null (UI picks).
  */
 export function chooseDiscoveredPeer(opts: {
   found: string[]
   manualIp: string | null
   preferredIps: string[]
   currentIp: string | null
-  reason: string
 }): string | null {
-  const { found, manualIp, preferredIps, currentIp, reason } = opts
+  const { found, manualIp, preferredIps, currentIp } = opts
   return (
     pickPreferredPhone(found, manualIp, preferredIps) ??
     (found.length === 1 ? found[0] : null) ??
-    (currentIp && found.includes(currentIp) ? currentIp : null) ??
-    (reason === 'user' ? null : found[0] ?? null)
+    (currentIp && found.includes(currentIp) ? currentIp : null)
   )
 }
 

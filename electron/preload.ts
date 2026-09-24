@@ -11,6 +11,9 @@ const api = {
   getState: (): Promise<BridgeState> => ipcRenderer.invoke('bridge:getState'),
   findPhone: (): Promise<{ ok: boolean; state: BridgeState }> =>
     ipcRenderer.invoke('bridge:findPhone'),
+  disconnect: (): Promise<BridgeState> => ipcRenderer.invoke('bridge:disconnect'),
+  setEnabled: (enabled: boolean): Promise<BridgeState> =>
+    ipcRenderer.invoke('bridge:setEnabled', enabled),
   selectPhone: (ip: string): Promise<BridgeState> =>
     ipcRenderer.invoke('bridge:selectPhone', ip),
   copy: (kind: CopyPreset): Promise<string> =>

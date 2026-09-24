@@ -6,7 +6,7 @@ Set Telegram, Cursor, Firefox, and WebStorm to `127.0.0.1` once. When the phone 
 
 [Русский](#happ-bridge-рус) · [English](#happ-bridge-en) · [Download](#install) · [Site](https://anatoly-kulishov.github.io/happ-bridge/) · [Changelog](CHANGELOG.md)
 
-**Текущая версия:** 1.1.4
+**Текущая версия:** 1.1.5
 
 ---
 
@@ -30,9 +30,10 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 - macOS (Apple Silicon) + телефон с Happ и включённым **«Разрешить LAN подключение»**
 - кто устал обновлять прокси в Telegram / Cursor / IDE после смены Wi‑Fi
 
-### Возможности (1.1.4)
+### Возможности (1.1.5)
 
 - автопоиск Happ в Wi‑Fi; если телефонов несколько - список и выбор вручную
+- можно **выключить мост** или отключить телефон без авто-reconnect
 - локальный TCP-relay только на `127.0.0.1` (соседи по Wi‑Fi не видят прокси)
 - опциональный **логин/пароль Happ LAN** - проверка при поиске и прописка в приложения
 - пароль LAN в **Keychain**; домашние SSID и peer на сеть; предупреждение в чужой Wi‑Fi без пароля
@@ -51,7 +52,7 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 
 #### Готовый .dmg
 
-1. Скачайте `.dmg` с [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases) (файл вида `Happ Bridge-1.1.4-arm64.dmg`).
+1. Скачайте `.dmg` с [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases) (файл вида `Happ Bridge-1.1.5-arm64.dmg`).
 2. Откройте диск и дважды нажмите **Install Happ Bridge.command** → «Установить».
 3. Если macOS блокирует **установщик**, в Терминале:
 
@@ -79,7 +80,7 @@ npm test
 npm run dist
 ```
 
-Готовый файл: `release/Happ Bridge-1.1.4-arm64.dmg`
+Готовый файл: `release/Happ Bridge-1.1.5-arm64.dmg`
 
 Разработка: `npm run dev`
 
@@ -122,7 +123,7 @@ Electron · Vite · React · TypeScript · Tailwind
 
 Stable localhost proxy bridge to a phone running Happ on your LAN. Stop editing proxy IPs in Telegram, Cursor, Firefox, and WebStorm every time DHCP moves your phone.
 
-**Version 1.1.4** - Keychain LAN password, home SSID warnings, peer-per-SSID, LAN auth, Gatekeeper-friendly DMG.
+**Version 1.1.5** - bridge on/off, SOCKS port fix to Happ, Keychain LAN password, peer-per-SSID, Gatekeeper-friendly DMG.
 
 ### Quick start
 
