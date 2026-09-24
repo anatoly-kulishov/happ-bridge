@@ -1,6 +1,6 @@
 {
   "name": "happ-bridge",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "macOS menu bar app: stable localhost SOCKS5/HTTP bridge to Happ on your phone. Multi-peer picker, manual inject for Cursor/WebStorm/Firefox.",
   "homepage": "https://anatoly-kulishov.github.io/happ-bridge/",
   "repository": {

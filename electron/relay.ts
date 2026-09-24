@@ -198,8 +198,9 @@ function waitListen(server: net.Server): Promise<void> {
 function closeServer(server: net.Server | null): Promise<void> {
   if (!server) return Promise.resolve()
   return new Promise((resolve) => {
+    const s = server as net.Server & { closeAllConnections?: () => void }
+    s.closeAllConnections?.()
     server.close(() => resolve())
-    server.closeAllConnections?.()
   })
 }
 

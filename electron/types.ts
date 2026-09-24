@@ -12,8 +12,15 @@ export type AppSettings = {
   manualIp: string | null
   /** Happ LAN SOCKS/HTTP login (optional). */
   proxyUser: string | null
-  /** Happ LAN password; used only when proxyUser or proxyPassword is set. */
+  /**
+   * Happ LAN password (in-memory / Keychain).
+   * Never persisted in settings.json — see store.ts.
+   */
   proxyPassword: string | null
+  /** SSIDs treated as trusted / home (no public-Wi‑Fi warning). */
+  homeSsids: string[]
+  /** Last chosen phone IP per Wi‑Fi SSID. */
+  ssidPeers: Record<string, string>
   /** Kept for old configs; inject is manual only. */
   seamlessAppProxy: boolean
   /** Last inject selection (unused for auto). */
@@ -30,6 +37,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   manualIp: null,
   proxyUser: null,
   proxyPassword: null,
+  homeSsids: [],
+  ssidPeers: {},
   seamlessAppProxy: false,
   injectTargets: [],
 }
@@ -58,6 +67,14 @@ export type BridgeState = {
   error: string | null
   diagnostics: DiagnosticCheck[] | null
   update: UpdateInfo
+  /** Current Wi‑Fi SSID if known. */
+  wifiSsid: string | null
+  /** Current SSID is in homeSsids. */
+  isHomeNetwork: boolean
+  /** LAN user/pass configured. */
+  lanAuthOn: boolean
+  /** No LAN auth while on non-home Wi‑Fi. */
+  publicWifiNoAuth: boolean
 }
 
 export type StatusTone = 'green' | 'yellow' | 'red'
@@ -106,6 +123,30 @@ export function statusPresentation(
   }
 }
 
+/** Tray tooltip + optional status-line for LAN auth / public Wi‑Fi. */
+export function traySecurityPresentation(opts: {
+  tip: string
+  lanAuthOn: boolean
+  publicWifiNoAuth: boolean
+}): { tip: string; menuLabel: string | null; cacheKey: string } {
+  const { lanAuthOn, publicWifiNoAuth } = opts
+  const tip = publicWifiNoAuth
+    ? `${opts.tip} · нет LAN-пароля вне дома`
+    : lanAuthOn
+      ? `${opts.tip} · LAN auth`
+      : opts.tip
+  const menuLabel = lanAuthOn
+    ? 'LAN auth · вкл'
+    : publicWifiNoAuth
+      ? '⚠ Нет пароля LAN (чужая сеть)'
+      : null
+  return {
+    tip,
+    menuLabel,
+    cacheKey: `${lanAuthOn ? 1 : 0}|${publicWifiNoAuth ? 1 : 0}`,
+  }
+}
+
 export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
   let socksPort = clampPort(raw.socksPort, DEFAULT_SETTINGS.socksPort)
   let httpPort = clampPort(raw.httpPort, DEFAULT_SETTINGS.httpPort)
@@ -130,24 +171,14 @@ export function normalizeSettings(raw: Partial<AppSettings>): AppSettings {
     manualIp: ipv4OrNull(raw.manualIp),
     proxyUser: stringOrNull(raw.proxyUser),
     proxyPassword: credentialOrNull(raw.proxyPassword),
+    homeSsids: normalizeSsidList(raw.homeSsids),
+    ssidPeers: normalizeSsidPeers(raw.ssidPeers),
     seamlessAppProxy:
       typeof raw.seamlessAppProxy === 'boolean'
         ? raw.seamlessAppProxy
         : DEFAULT_SETTINGS.seamlessAppProxy,
     injectTargets: normalizeInjectTargets(raw.injectTargets),
   }
-}
-
-/** SOCKS5 user/pass when a real login or non-empty password is set. */
-export function socksAuthFromSettings(
-  s: Pick<AppSettings, 'proxyUser' | 'proxyPassword'>,
-): { user: string; pass: string } | null {
-  const user = s.proxyUser
-  const pass = s.proxyPassword
-  const userOk = typeof user === 'string' && user.length > 0
-  const passOk = typeof pass === 'string' && pass.length > 0
-  if (!userOk && !passOk) return null
-  return { user: user ?? '', pass: pass ?? '' }
 }
 
 export function rememberPhoneIp(
@@ -162,6 +193,47 @@ export function rememberPhoneIp(
   }
   const recent = [ip, ...settings.recentPhoneIps.filter((x) => x !== ip)].slice(0, 8)
   return { lastPhoneIp: ip, recentPhoneIps: recent }
+}
+
+/** SOCKS5 user/pass when a real login or non-empty password is set. */
+export function socksAuthFromSettings(
+  s: Pick<AppSettings, 'proxyUser' | 'proxyPassword'>,
+): { user: string; pass: string } | null {
+  const user = s.proxyUser
+  const pass = s.proxyPassword
+  const userOk = typeof user === 'string' && user.length > 0
+  const passOk = typeof pass === 'string' && pass.length > 0
+  if (!userOk && !passOk) return null
+  return { user: user ?? '', pass: pass ?? '' }
+}
+
+/** Settings safe to send to the renderer (no Keychain secret). */
+export function publicSettings(settings: AppSettings): AppSettings {
+  return { ...settings, proxyPassword: null }
+}
+
+function normalizeSsidList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const out: string[] = []
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const s = item.trim()
+    if (s.length === 0 || out.includes(s)) continue
+    out.push(s)
+    if (out.length >= 16) break
+  }
+  return out
+}
+
+function normalizeSsidPeers(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    const ssid = k.trim()
+    if (!ssid || typeof v !== 'string' || !isIpv4(v.trim())) continue
+    out[ssid] = v.trim()
+  }
+  return out
 }
 
 function normalizeIpList(value: unknown, lastPhoneIp: string | null): string[] {

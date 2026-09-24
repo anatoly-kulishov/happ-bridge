@@ -31,7 +31,9 @@ To reduce **LAN abuse / spoofing** of the phone’s open SOCKS:
 3. Discovery and health probes then require a successful SOCKS5 user/pass (method `0x02`). Open no-auth decoys are rejected when credentials are set.
 4. Manual inject / copy presets pass those credentials into Cursor, WebStorm, Firefox, and Telegram cheat-sheets.
 
-Credentials are stored in Electron `userData` (`settings.json`) on the Mac - treat the Mac account as trusted.
+Credentials for LAN auth are stored in the **macOS Keychain** (service `app.happbridge.desktop`), not in plaintext `settings.json`. Login username remains in settings.
+
+Home Wi‑Fi SSIDs are marked explicitly in Settings («сделать домашней»). Peer IP is remembered per SSID for faster reconnect. On a non-home SSID without LAN credentials, the UI and tray warn about public Wi‑Fi risk.
 
 ### Relay session hygiene (1.1.3+)
 

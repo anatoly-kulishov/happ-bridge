@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.4 - 2026-09-24
+
+### Added
+- Warn when on non-home Wi‑Fi without Happ LAN credentials
+- Status / tray badge when LAN auth is on
+- LAN password stored in macOS Keychain (not settings.json)
+- Remember selected phone IP per Wi‑Fi SSID; mark home SSIDs explicitly in Settings
+
+### Changed
+- Settings password field is write-only (secret never sent to renderer)
+- Peer bind no longer auto-seeds current SSID as home
+
 ## 1.1.3 - 2026-09-24
 
 ### Added

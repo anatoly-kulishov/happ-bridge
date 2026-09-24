@@ -6,13 +6,13 @@
     <title>Happ Bridge - стабильный прокси к Happ на телефоне для macOS</title>
     <meta
       name="description"
-      content="Happ Bridge 1.1.3 - menu bar для macOS. SOCKS5/HTTP 127.0.0.1 для Telegram, Cursor, Firefox и WebStorm через Happ на iPhone."
+      content="Happ Bridge 1.1.4 - menu bar для macOS. SOCKS5/HTTP 127.0.0.1 для Telegram, Cursor, Firefox и WebStorm через Happ на iPhone."
     />
     <meta name="robots" content="index,follow" />
     <meta name="theme-color" content="#090b10" />
     <link rel="canonical" href="https://anatoly-kulishov.github.io/happ-bridge/" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Happ Bridge 1.1.3 - стабильный прокси к Happ на macOS" />
+    <meta property="og:title" content="Happ Bridge 1.1.4 - стабильный прокси к Happ на macOS" />
     <meta
       property="og:description"
       content="Один раз настройте 127.0.0.1:10808 / 10809. Happ Bridge сам находит телефон в Wi-Fi."
@@ -840,7 +840,7 @@
           </p>
           <div class="actions">
             <a class="btn btn-primary" href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest"
-              >Скачать .dmg 1.1.3</a
+              >Скачать .dmg 1.1.4</a
             >
             <a class="btn btn-ghost" href="#install">Как установить</a>
           </div>
@@ -877,7 +877,8 @@
         <h2 class="sec-title reveal">Что делает приложение</h2>
         <p class="sec-lead reveal reveal-d1">
           Relay только на localhost. Системный proxy macOS не трогаем. Прописка в приложения - только
-          по вашей кнопке. Опциональный логин/пароль Happ LAN снижает риск подмены SOCKS в Wi‑Fi.
+          по вашей кнопке. Опциональный логин/пароль Happ LAN (пароль в Keychain) снижает риск подмены
+          SOCKS в Wi‑Fi; чужие сети без пароля помечаются предупреждением.
         </p>
         <div class="split">
           <ul class="feature-list reveal">
@@ -894,10 +895,18 @@
               <p>Cursor, WebStorm, Firefox: «Прописать» и предложение перезапустить.</p>
             </li>
             <li>
-              <h3>Пароль LAN</h3>
+              <h3>Пароль LAN · Keychain</h3>
               <p>
                 Те же логин/пароль, что в Happ. Поиск проверяет SOCKS5 auth; чужой открытый SOCKS не
-                подставится. Мост Wi‑Fi не шифрует - это делает Happ.
+                подставится. Пароль хранится в Keychain macOS, не в settings.json. Мост Wi‑Fi не
+                шифрует - это делает Happ.
+              </p>
+            </li>
+            <li>
+              <h3>Домашние сети</h3>
+              <p>
+                Отметьте SSID как домашний в настройках - предупреждение о чужой сети пропадёт.
+                Выбранный телефон запоминается отдельно для каждой Wi‑Fi сети.
               </p>
             </li>
             <li>
@@ -1031,7 +1040,7 @@
       </section>
 
       <section class="en reveal" lang="en">
-        <h2>Happ Bridge 1.1.3 for macOS</h2>
+        <h2>Happ Bridge 1.1.4 for macOS</h2>
         <p>
           Menu bar utility: stable SOCKS5/HTTP localhost bridge to Happ.
           <a href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest">Download .dmg</a>
@@ -1039,7 +1048,7 @@
       </section>
 
       <footer>
-        <span>Open source · MIT · v1.1.3</span>
+        <span>Open source · MIT · v1.1.4</span>
         <a href="https://github.com/anatoly-kulishov/happ-bridge">GitHub</a>
         <a href="https://github.com/anatoly-kulishov/happ-bridge/blob/main/CHANGELOG.md">Changelog</a>
         <span>Not affiliated with Happ / Happ.su</span>

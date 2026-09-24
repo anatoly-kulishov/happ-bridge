@@ -92,7 +92,11 @@ export function Wizard({ state, onDone, onState }: Props) {
 
           {step === 1 && (
             <div className="space-y-4">
-              <StatusBadge status={state.status} phoneIp={state.phoneIp} />
+              <StatusBadge
+                status={state.status}
+                phoneIp={state.phoneIp}
+                lanAuthOn={state.lanAuthOn}
+              />
               <p className="text-sm text-zinc-400">
                 Нажмите кнопку - найдём телефоны с Happ в сети. Если их несколько,
                 выберите нужный.

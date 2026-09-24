@@ -18,7 +18,8 @@ export function Settings({ state, onState, onShowWizard }: Props) {
   const [socksPort, setSocksPort] = useState(String(state.settings.socksPort))
   const [httpPort, setHttpPort] = useState(String(state.settings.httpPort))
   const [proxyUser, setProxyUser] = useState(state.settings.proxyUser ?? '')
-  const [proxyPassword, setProxyPassword] = useState(state.settings.proxyPassword ?? '')
+  const [proxyPassword, setProxyPassword] = useState('')
+  const [clearPassword, setClearPassword] = useState(false)
   const [openAtLogin, setOpenAtLogin] = useState(state.settings.openAtLogin)
   const [saved, setSaved] = useState(false)
   const [advanced, setAdvanced] = useState(false)
@@ -27,6 +28,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
     useBridgeActions(onState)
   const [saving, setSaving] = useState(false)
   const [selecting, setSelecting] = useState(false)
+  const [markingHome, setMarkingHome] = useState(false)
 
   const selectPeer = async (ip: string) => {
     setSelecting(true)
@@ -37,19 +39,35 @@ export function Settings({ state, onState, onShowWizard }: Props) {
     }
   }
 
+  const markHome = async () => {
+    setMarkingHome(true)
+    try {
+      onState(await window.happBridge.markHomeNetwork())
+    } finally {
+      setMarkingHome(false)
+    }
+  }
+
   const save = async () => {
     setSaving(true)
     try {
       const user = proxyUser.trim() || null
-      const next = await window.happBridge.saveSettings({
+      const patch: Parameters<typeof window.happBridge.saveSettings>[0] = {
         manualIp: manualIp.trim() || null,
         socksPort: parsePort(socksPort, DEFAULT_SETTINGS.socksPort),
         httpPort: parsePort(httpPort, DEFAULT_SETTINGS.httpPort),
         proxyUser: user,
-        proxyPassword: user != null || proxyPassword.length > 0 ? proxyPassword : null,
         openAtLogin,
-      })
+      }
+      if (proxyPassword.length > 0) {
+        patch.proxyPassword = proxyPassword
+      } else if (clearPassword) {
+        patch.proxyPassword = null
+      }
+      const next = await window.happBridge.saveSettings(patch)
       onState(next)
+      setProxyPassword('')
+      setClearPassword(false)
       setSaved(true)
       window.setTimeout(() => setSaved(false), 1500)
     } finally {
@@ -69,7 +87,33 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           </h1>
         </header>
 
-        <StatusBadge status={state.status} phoneIp={state.phoneIp} />
+        <StatusBadge
+          status={state.status}
+          phoneIp={state.phoneIp}
+          lanAuthOn={state.lanAuthOn}
+        />
+
+        {state.publicWifiNoAuth && (
+          <div className="mt-3 rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-50">
+            <p className="font-medium tracking-tight">Чужая сеть без пароля LAN</p>
+            <p className="mt-1 text-xs leading-relaxed text-amber-100/75">
+              {state.wifiSsid
+                ? `«${state.wifiSsid}» не в домашних сетях, логин/пароль Happ не заданы.`
+                : 'Логин/пароль Happ не заданы.'}{' '}
+              В общественном Wi‑Fi сосед может сесть на ваш SOCKS.
+            </p>
+            {state.wifiSsid && !state.isHomeNetwork && (
+              <button
+                type="button"
+                disabled={markingHome}
+                className="mt-2.5 min-h-9 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 text-xs font-medium text-amber-50 transition-colors duration-150 hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+                onClick={() => void markHome()}
+              >
+                {markingHome ? 'Сохраняю…' : `Считать «${state.wifiSsid}» домашней`}
+              </button>
+            )}
+          </div>
+        )}
 
         {state.error && (
           <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
@@ -164,8 +208,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           <div>
             <p className="text-sm font-medium text-zinc-200">Пароль Happ (LAN)</p>
             <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
-              Те же логин и пароль, что в Happ при «Разрешить LAN». Нужны, чтобы соседи по Wi‑Fi
-              не подставляли чужой SOCKS и не пользовались вашим выходом.
+              Те же данные, что в Happ. Пароль только в Keychain macOS - в окно не подставляется.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -173,11 +216,45 @@ export function Settings({ state, onState, onShowWizard }: Props) {
             <Field
               label="Пароль"
               value={proxyPassword}
-              onChange={setProxyPassword}
-              placeholder="••••"
+              onChange={(v) => {
+                setProxyPassword(v)
+                setClearPassword(false)
+              }}
+              placeholder={state.lanAuthOn ? 'оставлен в Keychain' : '••••'}
               type="password"
             />
           </div>
+          {state.lanAuthOn && (
+            <button
+              type="button"
+              className="text-xs text-zinc-500 transition-colors duration-150 hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+              onClick={() => {
+                setProxyPassword('')
+                setClearPassword(true)
+              }}
+            >
+              {clearPassword ? 'Пароль будет удалён при сохранении' : 'Удалить пароль из Keychain'}
+            </button>
+          )}
+          {state.wifiSsid && (
+            <p className="text-xs leading-relaxed text-zinc-500">
+              Wi‑Fi: <span className="text-zinc-300">{state.wifiSsid}</span>
+              {state.isHomeNetwork ? ' · домашняя' : ''}
+              {!state.isHomeNetwork && (
+                <>
+                  {' · '}
+                  <button
+                    type="button"
+                    disabled={markingHome}
+                    className="text-sky-400 transition-colors duration-150 hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+                    onClick={() => void markHome()}
+                  >
+                    сделать домашней
+                  </button>
+                </>
+              )}
+            </p>
+          )}
         </div>
 
         <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2.5 text-xs leading-relaxed text-zinc-400">
@@ -228,7 +305,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           onClick={() => void save()}
           className="btn-primary min-w-[7.5rem]"
         >
-          {saved ? 'Сохранено' : 'Сохранить'}
+          {saved ? 'Сохранено' : saving ? '…' : 'Сохранить'}
         </button>
       </footer>
     </div>
@@ -293,7 +370,7 @@ function Field({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         autoComplete="off"
-        className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 font-mono text-sm text-white outline-none transition-colors duration-150 focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400/50"
+        className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 font-mono text-sm text-white outline-none transition-colors duration-150 focus-visible:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400/50"
       />
     </label>
   )

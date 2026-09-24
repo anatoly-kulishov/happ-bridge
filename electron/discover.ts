@@ -94,6 +94,51 @@ export function pickPreferredPhone(
   return null
 }
 
+/** SSID peer + recent + lastPhone, de-duped order for discovery. */
+export function preferredIpsFromSettings(
+  settings: {
+    ssidPeers: Record<string, string>
+    recentPhoneIps: string[]
+    lastPhoneIp: string | null
+  },
+  wifiSsid: string | null,
+): string[] {
+  const ssidPeer = wifiSsid ? settings.ssidPeers[wifiSsid] : undefined
+  const raw = [
+    ...(ssidPeer ? [ssidPeer] : []),
+    ...settings.recentPhoneIps,
+    ...(settings.lastPhoneIp ? [settings.lastPhoneIp] : []),
+  ]
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const ip of raw) {
+    if (seen.has(ip)) continue
+    seen.add(ip)
+    out.push(ip)
+  }
+  return out
+}
+
+/**
+ * Choose which online peer to bind.
+ * User-initiated multi-peer with no preference → null (UI must pick).
+ */
+export function chooseDiscoveredPeer(opts: {
+  found: string[]
+  manualIp: string | null
+  preferredIps: string[]
+  currentIp: string | null
+  reason: string
+}): string | null {
+  const { found, manualIp, preferredIps, currentIp, reason } = opts
+  return (
+    pickPreferredPhone(found, manualIp, preferredIps) ??
+    (found.length === 1 ? found[0] : null) ??
+    (currentIp && found.includes(currentIp) ? currentIp : null) ??
+    (reason === 'user' ? null : found[0] ?? null)
+  )
+}
+
 export function localIpv4Addresses(): string[] {
   const nets = os.networkInterfaces()
   const result: string[] = []

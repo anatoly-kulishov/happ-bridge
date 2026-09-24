@@ -1,13 +1,20 @@
 import { Notification } from 'electron'
 import { runDiagnostics } from './diagnostics'
 import {
+  chooseDiscoveredPeer,
   discoverPhones,
   networkFingerprint,
-  pickPreferredPhone,
+  preferredIpsFromSettings,
 } from './discover'
 import { ProxyRelay, probeSocks5 } from './relay'
 import { loadSettings, saveSettings } from './store'
-import { isIpv4, normalizeSettings, rememberPhoneIp, socksAuthFromSettings } from './types'
+import {
+  isIpv4,
+  normalizeSettings,
+  publicSettings,
+  rememberPhoneIp,
+  socksAuthFromSettings,
+} from './types'
 import type {
   AppSettings,
   BridgeState,
@@ -15,6 +22,12 @@ import type {
   DiagnosticCheck,
   UpdateInfo,
 } from './types'
+import {
+  addHomeSsid,
+  currentWifiSsid,
+  rememberSsidPeer,
+  wifiBridgeFlags,
+} from './wifi'
 
 export type ConnectReason =
   | 'startup'
@@ -35,7 +48,7 @@ const PROBE_FAILS_NEEDED = 3
 const TRAFFIC_FRESH_MS = 15_000
 
 export class BridgeSession {
-  private settings = loadSettings()
+  private settings: AppSettings
   private status: BridgeStatus = 'searching'
   private phoneIp: string | null = null
   private peers: string[] = []
@@ -45,6 +58,7 @@ export class BridgeSession {
     status: 'idle',
     message: 'Обновления через GitHub Releases',
   }
+  private wifiSsid: string | null = null
   private discoverAbort: AbortController | null = null
   private watchAbort: AbortController | null = null
   private connectInFlight: Promise<boolean> | null = null
@@ -61,8 +75,9 @@ export class BridgeSession {
   private readonly relay: ProxyRelay
   private readonly hooks: SessionHooks
 
-  constructor(hooks: SessionHooks) {
+  private constructor(hooks: SessionHooks, settings: AppSettings) {
     this.hooks = hooks
+    this.settings = settings
     this.relay = new ProxyRelay(
       { socksPort: this.settings.socksPort, httpPort: this.settings.httpPort },
       (err) => {
@@ -72,18 +87,54 @@ export class BridgeSession {
     )
   }
 
+  static async create(hooks: SessionHooks): Promise<BridgeSession> {
+    const settings = await loadSettings()
+    const session = new BridgeSession(hooks, settings)
+    await session.refreshWifi()
+    return session
+  }
+
   getState(): BridgeState {
+    const lanAuthOn = Boolean(socksAuthFromSettings(this.settings))
     return {
       status: this.status,
       phoneIp: this.phoneIp,
       peers: [...this.peers],
       socksLocal: `127.0.0.1:${this.settings.socksPort}`,
       httpLocal: `127.0.0.1:${this.settings.httpPort}`,
-      settings: this.settings,
+      settings: publicSettings(this.settings),
       error: this.errorMessage,
       diagnostics: this.diagnostics,
       update: this.updateInfo,
+      ...wifiBridgeFlags(this.wifiSsid, this.settings, lanAuthOn),
     }
+  }
+
+  async markCurrentNetworkHome(): Promise<BridgeState> {
+    await this.refreshWifi()
+    if (!this.wifiSsid) {
+      this.errorMessage = 'Wi‑Fi SSID не определён'
+      this.hooks.onChange()
+      return this.getState()
+    }
+    this.settings = addHomeSsid(this.settings, this.wifiSsid)
+    await saveSettings(this.settings)
+    this.errorMessage = null
+    this.hooks.onChange()
+    return this.getState()
+  }
+
+  private async refreshWifi(): Promise<void> {
+    this.wifiSsid = await currentWifiSsid()
+  }
+
+  private async bindPeerToWifi(ip: string): Promise<void> {
+    this.settings = {
+      ...this.settings,
+      ...rememberPhoneIp(this.settings, ip),
+      ...rememberSsidPeer(this.settings, this.wifiSsid, ip),
+    }
+    await saveSettings(this.settings)
   }
 
   setUpdateInfo(info: UpdateInfo): void {
@@ -140,10 +191,9 @@ export class BridgeSession {
     this.idleFailStreak = 0
     this.settings = {
       ...this.settings,
-      ...rememberPhoneIp(this.settings, ip),
       manualIp: ip,
     }
-    saveSettings(this.settings)
+    await this.bindPeerToWifi(ip)
     this.setStatus('connected')
     if (this.settings.wizardDone) this.announceReady()
     return this.getState()
@@ -151,8 +201,19 @@ export class BridgeSession {
 
   async updateSettings(patch: Partial<AppSettings>): Promise<BridgeState> {
     const prev = this.settings
-    this.settings = normalizeSettings({ ...this.settings, ...patch })
-    saveSettings(this.settings)
+    const merged: AppSettings = { ...this.settings, ...patch }
+    if (!('proxyPassword' in patch)) {
+      merged.proxyPassword = prev.proxyPassword
+    }
+    this.settings = normalizeSettings(merged)
+    try {
+      await saveSettings(this.settings)
+    } catch (err) {
+      this.settings = prev
+      this.errorMessage = err instanceof Error ? err.message : String(err)
+      this.hooks.onChange()
+      return this.getState()
+    }
     this.hooks.applyOpenAtLogin(this.settings.openAtLogin)
 
     const portsChanged =
@@ -184,9 +245,9 @@ export class BridgeSession {
     return this.getState()
   }
 
-  markWizardDone(): BridgeState {
+  async markWizardDone(): Promise<BridgeState> {
     this.settings = { ...this.settings, wizardDone: true }
-    saveSettings(this.settings)
+    await saveSettings(this.settings)
     this.hooks.applyOpenAtLogin(this.settings.openAtLogin)
     this.hooks.onChange()
     if (this.status === 'connected') this.announceReady()
@@ -218,7 +279,6 @@ export class BridgeSession {
     this.watchRunning = true
     this.watchAbort = new AbortController()
     this.lastNetFp = networkFingerprint()
-    // Single owner of network fingerprint (was duplicated in main setInterval).
     this.netPoll = setInterval(() => this.onNetworkMaybeChanged(), 3000)
     void this.watchLoop()
   }
@@ -240,12 +300,10 @@ export class BridgeSession {
     this.discoverAbort = new AbortController()
     this.errorMessage = null
     this.setStatus('searching')
+    await this.refreshWifi()
 
     try {
-      const preferredIps = [
-        ...this.settings.recentPhoneIps,
-        ...(this.settings.lastPhoneIp ? [this.settings.lastPhoneIp] : []),
-      ]
+      const preferredIps = preferredIpsFromSettings(this.settings, this.wifiSsid)
 
       const found = await discoverPhones({
         socksPort: this.settings.socksPort,
@@ -268,11 +326,13 @@ export class BridgeSession {
         return false
       }
 
-      const chosen =
-        pickPreferredPhone(found, this.settings.manualIp, preferredIps) ??
-        (found.length === 1 ? found[0] : null) ??
-        (this.phoneIp && found.includes(this.phoneIp) ? this.phoneIp : null) ??
-        (reason === 'user' ? null : found[0])
+      const chosen = chooseDiscoveredPeer({
+        found,
+        manualIp: this.settings.manualIp,
+        preferredIps,
+        currentIp: this.phoneIp,
+        reason,
+      })
 
       if (!chosen) {
         await this.relay.stop()
@@ -291,11 +351,7 @@ export class BridgeSession {
       this.probeFails = 0
       this.idleDelayMs = BASE_WATCH_MS
       this.idleFailStreak = 0
-      this.settings = {
-        ...this.settings,
-        ...rememberPhoneIp(this.settings, chosen),
-      }
-      saveSettings(this.settings)
+      await this.bindPeerToWifi(chosen)
       this.setStatus('connected')
 
       if (this.settings.wizardDone) this.announceReady()

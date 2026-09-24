@@ -18,7 +18,7 @@ export function ProxyCopyButton({ label, value, copied, onCopy }: Props) {
           {value}
         </span>
       </span>
-      <span className="shrink-0 text-xs font-medium text-sky-400">
+      <span className="min-w-[6.75rem] shrink-0 text-right text-xs font-medium text-sky-400">
         {copied ? 'Скопировано' : 'Копировать'}
       </span>
     </button>

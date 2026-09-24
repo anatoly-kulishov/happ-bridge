@@ -109,7 +109,6 @@ const FF_BEGIN = '// BEGIN happ-bridge managed'
 const FF_END = '// END happ-bridge managed'
 
 export function injectStatus(
-  ports: InjectPorts,
   homeDir = os.homedir(),
   backupPath?: string,
 ): InjectTargetInfo[] {
@@ -186,7 +185,7 @@ export function applyInject(
   }
 
   saveBackups(backupPath, backups)
-  return { results, status: injectStatus(ports, homeDir, backupPath) }
+  return { results, status: injectStatus(homeDir, backupPath) }
 }
 
 export function revertInject(
@@ -220,7 +219,7 @@ export function revertInject(
   }
 
   saveBackups(backupPath, backups)
-  return { results, status: injectStatus(ports, homeDir, backupPath) }
+  return { results, status: injectStatus(homeDir, backupPath) }
 }
 
 /** Targets that currently have a restore snapshot (actively injected). */

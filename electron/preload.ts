@@ -19,6 +19,8 @@ const api = {
     ipcRenderer.invoke('bridge:saveSettings', patch),
   finishWizard: (): Promise<BridgeState> =>
     ipcRenderer.invoke('bridge:finishWizard'),
+  markHomeNetwork: (): Promise<BridgeState> =>
+    ipcRenderer.invoke('bridge:markHomeNetwork'),
   diagnose: (): Promise<BridgeState> => ipcRenderer.invoke('bridge:diagnose'),
   checkUpdates: (): Promise<BridgeState> =>
     ipcRenderer.invoke('bridge:checkUpdates'),

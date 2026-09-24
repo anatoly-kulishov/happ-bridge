@@ -6,7 +6,14 @@ import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
-import { localSubnetHosts, prioritizedHosts, pickPreferredPhone, scanAllHosts } from '../electron/discover'
+import {
+  chooseDiscoveredPeer,
+  localSubnetHosts,
+  prioritizedHosts,
+  pickPreferredPhone,
+  preferredIpsFromSettings,
+  scanAllHosts,
+} from '../electron/discover'
 import {
   applyInject,
   buildWebstormXml,
@@ -24,7 +31,13 @@ import {
   rememberPhoneIp,
   socksAuthFromSettings,
   statusPresentation,
+  traySecurityPresentation,
 } from '../electron/types'
+import {
+  isHomeSsid,
+  rememberSsidPeer,
+  shouldWarnPublicNoAuth,
+} from '../electron/wifi'
 
 async function main() {
   assert.equal(normalizeSettings({ socksPort: 99999 }).socksPort, 10808)
@@ -55,6 +68,41 @@ async function main() {
     null,
   )
   assert.equal(statusPresentation('searching', null).tone, 'yellow')
+  assert.ok(statusPresentation('connected', '1.1.1.1').trayTip.includes('1.1.1.1'))
+  assert.equal(
+    traySecurityPresentation({
+      tip: 'base',
+      lanAuthOn: true,
+      publicWifiNoAuth: false,
+    }).tip,
+    'base · LAN auth',
+  )
+  assert.equal(
+    traySecurityPresentation({
+      tip: 'base',
+      lanAuthOn: false,
+      publicWifiNoAuth: true,
+    }).menuLabel,
+    '⚠ Нет пароля LAN (чужая сеть)',
+  )
+  assert.equal(isHomeSsid('Cafe', ['Home']), false)
+  assert.equal(isHomeSsid('Home', ['Home']), true)
+  assert.equal(
+    shouldWarnPublicNoAuth({ ssid: 'Cafe', homeSsids: ['Home'], hasAuth: false }),
+    true,
+  )
+  assert.equal(
+    shouldWarnPublicNoAuth({ ssid: 'Cafe', homeSsids: ['Home'], hasAuth: true }),
+    false,
+  )
+  assert.equal(
+    shouldWarnPublicNoAuth({ ssid: 'Home', homeSsids: ['Home'], hasAuth: false }),
+    false,
+  )
+  assert.equal(
+    shouldWarnPublicNoAuth({ ssid: 'Cafe', homeSsids: [], hasAuth: false }),
+    true,
+  )
   assert.ok(presetText('telegram', 10808, 10809).includes('SOCKS5'))
   assert.ok(
     presetText('telegram', 10808, 10809, { user: 'u', pass: 'p' }).includes('Логин: u'),
@@ -80,6 +128,49 @@ async function main() {
   )
   assert.ok(
     presetText('socks', 10808, 10809, { user: 'u', pass: 'p' }).includes('u'),
+  )
+
+  const withPeer = rememberSsidPeer(
+    normalizeSettings({}),
+    'HomeWiFi',
+    '192.168.1.6',
+  )
+  assert.equal(withPeer.ssidPeers['HomeWiFi'], '192.168.1.6')
+  assert.deepEqual(normalizeSettings({}).homeSsids, [])
+  assert.equal(
+    normalizeSettings({ homeSsids: [' A ', 'A', ''] }).homeSsids.join(','),
+    'A',
+  )
+  assert.deepEqual(
+    preferredIpsFromSettings(
+      normalizeSettings({
+        lastPhoneIp: '10.0.0.1',
+        recentPhoneIps: ['10.0.0.2'],
+        ssidPeers: { Cafe: '10.0.0.9' },
+      }),
+      'Cafe',
+    ),
+    ['10.0.0.9', '10.0.0.2', '10.0.0.1'],
+  )
+  assert.equal(
+    chooseDiscoveredPeer({
+      found: ['10.0.0.2', '10.0.0.5'],
+      manualIp: null,
+      preferredIps: [],
+      currentIp: null,
+      reason: 'user',
+    }),
+    null,
+  )
+  assert.equal(
+    chooseDiscoveredPeer({
+      found: ['10.0.0.2', '10.0.0.5'],
+      manualIp: null,
+      preferredIps: [],
+      currentIp: null,
+      reason: 'startup',
+    }),
+    '10.0.0.2',
   )
   assert.equal(
     pickPreferredPhone(['10.0.0.2', '10.0.0.5'], '10.0.0.5', ['10.0.0.2']),

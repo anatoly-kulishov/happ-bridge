@@ -19,7 +19,7 @@ import {
 } from './inject'
 import { presetText, type CopyPreset } from './presets'
 import { BridgeSession } from './session'
-import { socksAuthFromSettings, statusPresentation } from './types'
+import { socksAuthFromSettings, statusPresentation, traySecurityPresentation } from './types'
 import type { AppSettings, BridgeStatus } from './types'
 import { createUpdater } from './updater'
 
@@ -127,19 +127,28 @@ function syncTray(state: {
   phoneIp: string | null
   socksLocal: string
   httpLocal: string
-  settings: AppSettings
+  lanAuthOn: boolean
+  publicWifiNoAuth: boolean
 }): void {
   if (!tray || !session) return
   const ui = statusPresentation(state.status, state.phoneIp)
-  const key = `${state.status}|${state.phoneIp ?? ''}|${state.socksLocal}|${state.httpLocal}`
+  const sec = traySecurityPresentation({
+    tip: ui.trayTip,
+    lanAuthOn: state.lanAuthOn,
+    publicWifiNoAuth: state.publicWifiNoAuth,
+  })
+  const key = `${state.status}|${state.phoneIp ?? ''}|${sec.cacheKey}`
   if (key === lastTrayKey) return
   lastTrayKey = key
 
   tray.setImage(trayIcon(ui.tone))
-  tray.setToolTip(ui.trayTip)
+  tray.setToolTip(sec.tip)
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: ui.label, enabled: false },
+      ...(sec.menuLabel
+        ? [{ label: sec.menuLabel, enabled: false as const }]
+        : []),
       { type: 'separator' },
       {
         label: `Скопировать SOCKS5 (${state.socksLocal})`,
@@ -224,6 +233,8 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
 
   ipcMain.handle('bridge:finishWizard', () => session!.markWizardDone())
 
+  ipcMain.handle('bridge:markHomeNetwork', () => session!.markCurrentNetworkHome())
+
   ipcMain.handle('bridge:diagnose', async () => session!.diagnose())
 
   ipcMain.handle('bridge:checkUpdates', async () => {
@@ -233,8 +244,7 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
   })
 
   ipcMain.handle('bridge:injectStatus', () => {
-    const s = session!.getState()
-    return injectStatus(injectPortsFromState(s), undefined, injectBackupPath())
+    return injectStatus(undefined, injectBackupPath())
   })
 
   ipcMain.handle('bridge:injectApply', async (_e, targets: InjectTarget[]) => {
@@ -305,7 +315,7 @@ app.whenReady().then(async () => {
     onChange: (info) => session?.setUpdateInfo(info),
   })
 
-  session = new BridgeSession({
+  session = await BridgeSession.create({
     onChange: broadcast,
     applyOpenAtLogin,
   })
