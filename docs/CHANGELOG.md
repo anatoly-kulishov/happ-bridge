@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.7 - 2026-09-30
+
+### Added
+- Redesigned Settings UI: compact dark macOS-utility layout with cards, lucide icons and clear hierarchy
+- One bridge toggle «Мост к Happ» - single on/off control in the window and tray
+- Real app icons for Cursor / WebStorm / Firefox (read from the installed .app bundles; hardcoded glyph fallback stays)
+- Auto-update end-to-end: macOS zip target + `latest-mac.yml` published to GitHub Releases; electron-updater CJS/ESM interop fixed (users on 1.1.6 need one manual reinstall - that build ships no updater artifacts)
+- Dev-mode window auto-open (`npm run dev` + electron shows the Settings window immediately)
+- Technical docs: connection/discovery/ping mechanism described in README and on the landing page
+
+### Fixed
+- Raw Node errors in the UI («listen EADDRINUSE…») replaced with localized Russian hints (EADDRINUSE / EACCES)
+- «Сохранить ●» button label wrapped the dot to a second line; unsaved-changes indicator is now an amber dot with a hover tooltip
+
+### Changed
+- «Отключить телефон» button and tray item removed - redundant with the bridge toggle (backend disconnect API kept for compatibility)
+- Docs moved to `docs/` (landing page, changelog, security, release notes); README and LICENSE stay in the root
+
 ## 1.1.6 - 2026-09-30
 
 ### Added

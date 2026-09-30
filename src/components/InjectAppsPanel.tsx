@@ -1,3 +1,4 @@
+import { AppWindow, CheckCircle2, Code2, MousePointer2, RefreshCcw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type {
   InjectTarget,
@@ -7,11 +8,22 @@ import type { BridgeState } from '../../electron/types'
 
 const ALL: InjectTarget[] = ['cursor', 'webstorm', 'firefox']
 
-type Props = {
-  onState: (s: BridgeState) => void
+const targetMeta: Record<
+  InjectTarget,
+  { label: string; icon: React.ElementType }
+> = {
+  cursor: { label: 'Cursor', icon: MousePointer2 },
+  webstorm: { label: 'WebStorm', icon: Code2 },
+  firefox: { label: 'Firefox', icon: AppWindow },
 }
 
-export function InjectAppsPanel({ onState }: Props) {
+type Props = {
+  onState: (s: BridgeState) => void
+  /** When the panel is wrapped in a card with its own title, hide the internal header. */
+  showHeader?: boolean
+}
+
+export function InjectAppsPanel({ onState, showHeader = true }: Props) {
   const [targets, setTargets] = useState<InjectTarget[]>([])
   const [status, setStatus] = useState<InjectTargetInfo[]>([])
   const [busy, setBusy] = useState(false)
@@ -74,52 +86,79 @@ export function InjectAppsPanel({ onState }: Props) {
   >
 
   return (
-    <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-medium text-zinc-200">Прописать в приложения</p>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void refresh()}
-          className="min-h-8 rounded-md border border-zinc-700 px-2.5 text-xs font-medium text-zinc-300 transition-colors duration-150 hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
-        >
-          Обновить статус
-        </button>
-      </div>
-      <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-        Выберите приложения и нажмите «Прописать» (127.0.0.1) или «Откатить»
-        (прямой IP телефона). Автоподмены нет — только вручную.
-      </p>
+    <div className="space-y-2">
+      {showHeader && (
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            Прописать в приложения
+          </h2>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void refresh()}
+            className="flex h-7 items-center gap-1 rounded-md border border-zinc-700 px-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+          >
+            <RefreshCcw size={13} />
+            Обновить статус
+          </button>
+        </div>
+      )}
+      {showHeader && (
+        <p className="text-xs leading-relaxed text-zinc-500">
+          Выберите приложения и нажмите «Прописать» (127.0.0.1) или «Откатить»
+          (прямой IP телефона). Автоподмены нет — только вручную.
+        </p>
+      )}
 
-      <ul className="mt-3 space-y-2">
+      <ul className="space-y-1.5">
         {ALL.map((id) => {
           const info = byId[id]
           const available = info?.available ?? false
           const applied = info?.applied ?? false
+          const selected = targets.includes(id)
+          const Icon = targetMeta[id].icon
           return (
-            <li key={id} className="flex items-start gap-2 text-sm">
+            <li
+              key={id}
+              className={`flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors ${
+                selected && available
+                  ? 'border-sky-500/30 bg-sky-500/10'
+                  : 'border-zinc-800 bg-zinc-900/60'
+              }`}
+            >
               <input
                 type="checkbox"
                 id={`inject-${id}`}
-                checked={targets.includes(id)}
+                checked={selected}
                 disabled={!available || busy}
                 onChange={() => toggle(id)}
-                className="mt-0.5 size-4 rounded border-zinc-600 accent-sky-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                className="size-4 rounded border-zinc-600 accent-sky-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
               />
-              <label htmlFor={`inject-${id}`} className="min-w-0 flex-1 cursor-pointer">
-                <span className="text-zinc-200">
-                  {info?.label ?? id}
-                  {applied && (
-                    <span className="ml-1.5 text-xs text-emerald-400">прописано</span>
-                  )}
-                  {!available && (
-                    <span className="ml-1.5 text-xs text-zinc-600">не найден</span>
-                  )}
+              <label
+                htmlFor={`inject-${id}`}
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-2"
+                title={info?.detail ?? targetMeta[id].label}
+              >
+                {info?.icon ? (
+                  <img
+                    src={info.icon}
+                    alt=""
+                    className="h-[18px] w-[18px] shrink-0 rounded-[4px]"
+                  />
+                ) : (
+                  <Icon size={18} className="shrink-0 text-zinc-400" />
+                )}
+                <span className="truncate text-sm text-zinc-200">
+                  {targetMeta[id].label}
                 </span>
-                {info?.detail && (
-                  <span className="mt-0.5 block truncate text-xs text-zinc-600" title={info.detail}>
-                    {info.detail}
+                {applied && (
+                  <span className="inline-flex shrink-0 items-center gap-0.5 text-xs font-medium text-emerald-400">
+                    <CheckCircle2 size={12} />
+                    прописано
                   </span>
+                )}
+                {!available && (
+                  <span className="shrink-0 text-xs text-zinc-600">не найдено</span>
                 )}
               </label>
             </li>
@@ -127,7 +166,7 @@ export function InjectAppsPanel({ onState }: Props) {
         })}
       </ul>
 
-      <div className="mt-3 flex items-center gap-3">
+      <div className="flex items-center gap-2 pt-1">
         <button
           type="button"
           disabled={busy}
@@ -139,7 +178,7 @@ export function InjectAppsPanel({ onState }: Props) {
         <button
           type="button"
           disabled={busy}
-          className="min-h-9 shrink-0 rounded-lg border border-zinc-700 px-3 text-xs font-medium text-zinc-300 transition-colors duration-150 hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+          className="btn-secondary"
           onClick={() => void run('revert')}
         >
           Откатить
@@ -147,7 +186,7 @@ export function InjectAppsPanel({ onState }: Props) {
       </div>
 
       {log && (
-        <pre className="mt-2 whitespace-pre-wrap rounded-md bg-zinc-950/80 px-2.5 py-2 text-xs leading-relaxed text-zinc-400">
+        <pre className="whitespace-pre-wrap rounded-md bg-zinc-950/80 px-2.5 py-2 text-xs leading-relaxed text-zinc-400">
           {log}
         </pre>
       )}

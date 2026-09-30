@@ -1,3 +1,4 @@
+import { Loader2 } from 'lucide-react'
 import type { BridgeStatus } from '../../electron/types'
 import { statusPresentation } from '../../electron/types'
 
@@ -29,7 +30,7 @@ export function StatusBadge({
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <div
-          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors duration-150 ${item.badgeClass}`}
+          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors duration-150 ${item.badgeClass}`}
           role="status"
           aria-live="polite"
         >
@@ -44,6 +45,7 @@ export function StatusBadge({
       </div>
       {scan && enabled && !paused && status === 'searching' && scan.total > 0 && (
         <div className="flex items-center gap-2" role="progressbar" aria-label="Поиск телефона">
+          <Loader2 size={14} className="animate-spin text-sky-400" />
           <div className="h-1 flex-1 overflow-hidden rounded-full bg-zinc-800">
             <div
               className="h-full rounded-full bg-sky-500 transition-[width] duration-200"

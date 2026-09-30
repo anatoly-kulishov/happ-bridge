@@ -48,6 +48,19 @@ const MAX_IDLE_MS = 120_000
 const PROBE_FAILS_NEEDED = 3
 const TRAFFIC_FRESH_MS = 15_000
 
+/** Human-readable Russian message for known Node error codes; unknown ⇒ raw message. */
+function presentError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err)
+  if (msg.includes('EADDRINUSE')) {
+    const port = /127\.0\.0\.1:(\d+)/.exec(msg)?.[1]
+    return `Порт ${port ?? 'прокси'} уже занят — похоже, запущена другая копия Happ Bridge. Закройте её или смените порт в настройках.`
+  }
+  if (msg.includes('EACCES')) {
+    return 'Нет прав на привязку порта — используйте локальный порт выше 1024.'
+  }
+  return msg
+}
+
 export class BridgeSession {
   private settings: AppSettings
   private status: BridgeStatus = 'searching'
@@ -86,7 +99,7 @@ export class BridgeSession {
     this.relay = new ProxyRelay(
       { socksPort: this.settings.socksPort, httpPort: this.settings.httpPort },
       (err) => {
-        this.errorMessage = err.message
+        this.errorMessage = presentError(err)
         this.setStatus('disconnected')
       },
     )
@@ -315,7 +328,7 @@ export class BridgeSession {
       await saveSettings(this.settings)
     } catch (err) {
       this.settings = prev
-      this.errorMessage = err instanceof Error ? err.message : String(err)
+      this.errorMessage = presentError(err)
       this.hooks.onChange()
       return this.getState()
     }
@@ -515,7 +528,7 @@ export class BridgeSession {
       return true
     } catch (err) {
       if (this.discoverAbort.signal.aborted) return false
-      this.errorMessage = err instanceof Error ? err.message : String(err)
+      this.errorMessage = presentError(err)
       await this.relay.stop()
       this.phoneIp = null
       this.setStatus('disconnected')

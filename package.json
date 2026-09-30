@@ -1,6 +1,6 @@
 {
   "name": "happ-bridge",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "macOS menu bar app: stable localhost SOCKS5/HTTP bridge to Happ on your phone. Multi-peer picker, manual inject for Cursor/WebStorm/Firefox.",
   "homepage": "https://anatoly-kulishov.github.io/happ-bridge/",
   "repository": {
@@ -34,10 +34,11 @@
     "test:adversarial": "tsx scripts/stress.ts 1",
     "test:stress": "tsx scripts/stress.ts 5",
     "prepare:dmg": "bash scripts/prepare-dmg-installer.sh",
-    "dist": "npm run prepare:dmg && npm run build && electron-builder --mac dmg"
+    "dist": "npm run prepare:dmg && npm run build && electron-builder --mac"
   },
   "dependencies": {
     "electron-updater": "^6.3.9",
+    "lucide-react": "^1.49.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -71,7 +72,10 @@
       {
         "from": "resources",
         "to": ".",
-        "filter": ["*.png", "*@2x.png"]
+        "filter": [
+          "*.png",
+          "*@2x.png"
+        ]
       }
     ],
     "mac": {
@@ -79,7 +83,8 @@
       "icon": "resources/icon.png",
       "identity": null,
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "extendInfo": {
         "NSLocalNetworkUsageDescription": "Чтобы найти телефон с Happ в вашей Wi-Fi сети",

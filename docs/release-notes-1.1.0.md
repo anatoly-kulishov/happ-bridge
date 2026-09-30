@@ -17,4 +17,4 @@ xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command" && open "/Volumes/H
 - Revert restores the phone’s direct Happ IP (not system proxy)
 - Unsigned DMG installer clears Gatekeeper quarantine
 
-Full notes: [CHANGELOG.md](https://github.com/anatoly-kulishov/happ-bridge/blob/main/CHANGELOG.md)
+Full notes: [CHANGELOG.md](https://github.com/anatoly-kulishov/happ-bridge/blob/main/docs/CHANGELOG.md)

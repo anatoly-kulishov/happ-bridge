@@ -11,12 +11,14 @@ import {
 } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
+import { resolveInjectIcons } from './appIcons'
 import {
   applyInject,
   injectStatus,
   relaunchInjectApps,
   revertInject,
   type InjectTarget,
+  type InjectTargetInfo,
 } from './inject'
 import { presetText, type CopyPreset } from './presets'
 import { BridgeSession } from './session'
@@ -209,16 +211,6 @@ function syncTray(state: {
           void session?.setEnabled(!enabled).then(() => broadcast())
         },
       },
-      ...(enabled && state.status === 'connected'
-        ? [
-            {
-              label: 'Отключить телефон',
-              click: () => {
-                void session?.disconnect().then(() => broadcast())
-              },
-            },
-          ]
-        : []),
       { label: 'Настройки…', click: () => createWindow(true) },
       { type: 'separator' },
       {
@@ -306,28 +298,42 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
     return session!.getState()
   })
 
-  ipcMain.handle('bridge:injectStatus', () => {
-    return injectStatus(undefined, injectBackupPath())
-  })
+  const injectStatusWithIcons = async (): Promise<InjectTargetInfo[]> => {
+    const status = injectStatus(undefined, injectBackupPath())
+    const icons = await resolveInjectIcons().catch(() => ({}))
+    return status.map((t) => ({ ...t, icon: icons[t.id] ?? null }))
+  }
+
+  ipcMain.handle('bridge:injectStatus', () => injectStatusWithIcons())
 
   ipcMain.handle('bridge:injectApply', async (_e, targets: InjectTarget[]) => {
     const s = session!.getState()
-    return applyInject(
+    const result = await applyInject(
       targets,
       injectPortsFromState(s),
       undefined,
       injectBackupPath(),
     )
+    const icons = await resolveInjectIcons().catch(() => ({}))
+    return {
+      ...result,
+      status: result.status.map((t) => ({ ...t, icon: icons[t.id] ?? null })),
+    }
   })
 
   ipcMain.handle('bridge:injectRevert', async (_e, targets: InjectTarget[]) => {
     const s = session!.getState()
-    return revertInject(
+    const result = await revertInject(
       targets,
       injectPortsFromState(s),
       undefined,
       injectBackupPath(),
     )
+    const icons = await resolveInjectIcons().catch(() => ({}))
+    return {
+      ...result,
+      status: result.status.map((t) => ({ ...t, icon: icons[t.id] ?? null })),
+    }
   })
 
   ipcMain.handle('bridge:injectRelaunchOffer', async (_e, targets: InjectTarget[]) => {
@@ -391,7 +397,7 @@ app.whenReady().then(async () => {
   powerMonitor.on('suspend', () => session?.onSuspend())
   powerMonitor.on('resume', () => session?.onResume())
 
-  if (!session.getState().settings.wizardDone) createWindow(true)
+  if (!session.getState().settings.wizardDone || isDev) createWindow(true)
 
   if (session.getState().settings.enabled) {
     await session.connect('startup')

@@ -46,6 +46,8 @@ export type InjectTargetInfo = {
   applied: boolean
   path: string | null
   detail: string
+  /** Real bundle icon (data URL), filled by the main process; absent ⇒ generic icon. */
+  icon?: string | null
 }
 
 export type InjectActionResult = {

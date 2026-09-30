@@ -35,8 +35,14 @@ export function createUpdater(hooks: UpdateHooks): {
       emit({ status: 'checking', message: 'Проверяем обновления…' })
 
       try {
-        // Dynamic import so dev/selfcheck does not require electron-updater at typecheck of scripts
-        const { autoUpdater } = await import('electron-updater')
+        // Dynamic import so dev/selfcheck does not require electron-updater at typecheck of scripts.
+        // electron-updater is CJS; in native-ESM build the named export isn't promoted by
+        // cjs-module-lexer, so read it off `default` when the named one is absent.
+        const mod = await import('electron-updater')
+        const autoUpdater = (mod.default as { autoUpdater?: typeof mod.autoUpdater })?.autoUpdater ?? mod.autoUpdater
+        if (!autoUpdater) {
+          throw new Error('autoUpdater не найден: несовместимый экспорт electron-updater')
+        }
         autoUpdater.autoDownload = true
         autoUpdater.autoInstallOnAppQuit = true
 

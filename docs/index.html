@@ -6,13 +6,13 @@
     <title>Happ Bridge - стабильный прокси к Happ на телефоне для macOS</title>
     <meta
       name="description"
-      content="Happ Bridge 1.1.6 - menu bar для macOS. SOCKS5/HTTP 127.0.0.1 для Telegram, Cursor, Firefox и WebStorm через Happ на iPhone."
+      content="Happ Bridge 1.1.7 - menu bar для macOS. SOCKS5/HTTP 127.0.0.1 для Telegram, Cursor, Firefox и WebStorm через Happ на iPhone."
     />
     <meta name="robots" content="index,follow" />
     <meta name="theme-color" content="#090b10" />
     <link rel="canonical" href="https://anatoly-kulishov.github.io/happ-bridge/" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Happ Bridge 1.1.6 - стабильный прокси к Happ на macOS" />
+    <meta property="og:title" content="Happ Bridge 1.1.7 - стабильный прокси к Happ на macOS" />
     <meta
       property="og:description"
       content="Один раз настройте 127.0.0.1:10808 / 10809. Happ Bridge сам находит телефон в Wi-Fi."
@@ -821,6 +821,7 @@
           </button>
           <nav class="nav-links" id="navLinks" aria-label="Разделы">
             <a href="#how">Как работает</a>
+            <a href="#tech">Технически</a>
             <a href="#shots">Интерфейс</a>
             <a href="#install">Установка</a>
             <a class="btn btn-primary" href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest"
@@ -840,7 +841,7 @@
           </p>
           <div class="actions">
             <a class="btn btn-primary" href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest"
-              >Скачать .dmg 1.1.6</a
+              >Скачать .dmg 1.1.7</a
             >
             <a class="btn btn-ghost" href="#install">Как установить</a>
           </div>
@@ -931,6 +932,44 @@
             <figcaption style="text-align: center">Меню в строке меню macOS</figcaption>
           </div>
         </div>
+      </section>
+
+      <section id="tech">
+        <h2 class="sec-title reveal">Как находит телефон (технически)</h2>
+        <p class="sec-lead reveal reveal-d1">
+          Никакого mDNS, broadcast или сетевого &laquo;пинга&raquo;: проверяется только TCP-проба
+          SOCKS5-порта. Чужой открытый прокси в сети не подставится.
+        </p>
+        <ul class="feature-list reveal">
+          <li>
+            <h3>«Пинг» = рукопожатие SOCKS5</h3>
+            <p>
+              Клиент шлёт greeting (с паролем — user/pass) и принимает только VER=5 с методом
+              no-auth/user-pass. Отказ 0xff или мусор — не Happ.
+            </p>
+          </li>
+          <li>
+            <h3>Порядок кандидатов</h3>
+            <p>
+              Ручной IP → IP, запомненный для текущего Wi-Fi (SSID) → недавние IP → последний IP →
+              вся /24 подсети (приоритет адресов .2–.80).
+            </p>
+          </li>
+          <li>
+            <h3>Скан /24: 64 потока, 350 мс</h3>
+            <p>
+              Полный скан собирает всех Happ в список с прогрессом N/254; быстрый реконнект —
+              стоп на первом попадании.
+            </p>
+          </li>
+          <li>
+            <h3>Watchdog и память сетей</h3>
+            <p>
+              Health-check каждые ~8 с, 3 промаха — переподключение; смена сети и sleep/wake —
+              мгновенный реконнект. Успешный IP запоминается для SSID — дома коннект без скана.
+            </p>
+          </li>
+        </ul>
       </section>
 
       <section id="shots">
@@ -1041,7 +1080,7 @@
       </section>
 
       <section class="en reveal" lang="en">
-        <h2>Happ Bridge 1.1.6 for macOS</h2>
+        <h2>Happ Bridge 1.1.7 for macOS</h2>
         <p>
           Menu bar utility: stable SOCKS5/HTTP localhost bridge to Happ.
           <a href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest">Download .dmg</a>
@@ -1049,7 +1088,7 @@
       </section>
 
       <footer>
-        <span>Open source · MIT · v1.1.6</span>
+        <span>Open source · MIT · v1.1.7</span>
         <a href="https://github.com/anatoly-kulishov/happ-bridge">GitHub</a>
         <a href="https://github.com/anatoly-kulishov/happ-bridge/blob/main/CHANGELOG.md">Changelog</a>
         <span>Not affiliated with Happ / Happ.su</span>
