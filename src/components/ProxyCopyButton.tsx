@@ -3,14 +3,17 @@ type Props = {
   value: string
   copied: boolean
   onCopy: () => void
+  disabled?: boolean
 }
 
-export function ProxyCopyButton({ label, value, copied, onCopy }: Props) {
+export function ProxyCopyButton({ label, value, copied, onCopy, disabled }: Props) {
   return (
     <button
       type="button"
-      onClick={onCopy}
-      className="flex w-full items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-2.5 text-left transition-colors duration-150 hover:border-zinc-600 hover:bg-zinc-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 active:scale-[0.99]"
+      onClick={disabled ? undefined : onCopy}
+      disabled={disabled}
+      title={disabled ? 'Мост не подключён — адрес пока не работает' : undefined}
+      className="flex w-full items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-2.5 text-left transition-colors duration-150 hover:border-zinc-600 hover:bg-zinc-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
     >
       <span className="min-w-0 flex-1">
         <span className="block text-xs text-zinc-500">{label}</span>
@@ -19,7 +22,7 @@ export function ProxyCopyButton({ label, value, copied, onCopy }: Props) {
         </span>
       </span>
       <span className="min-w-[6.75rem] shrink-0 text-right text-xs font-medium text-sky-400">
-        {copied ? 'Скопировано' : 'Копировать'}
+        {disabled ? 'не активен' : copied ? 'Скопировано' : 'Копировать'}
       </span>
     </button>
   )

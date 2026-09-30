@@ -6,7 +6,7 @@ import {
   networkFingerprint,
   preferredIpsFromSettings,
 } from './discover'
-import { ProxyRelay, probeSocks5 } from './relay'
+import { ProxyRelay, checkProxyAuth, probeSocks5 } from './relay'
 import { loadSettings, saveSettings } from './store'
 import {
   isIpv4,
@@ -26,6 +26,7 @@ import {
   addHomeSsid,
   currentWifiSsid,
   rememberSsidPeer,
+  shouldWarnPublicNoAuth,
   wifiBridgeFlags,
 } from './wifi'
 
@@ -65,6 +66,8 @@ export class BridgeSession {
   private watchRunning = false
   private disposed = false
   private netPoll: ReturnType<typeof setInterval> | null = null
+  private scanAbort: AbortController | null = null
+  private scanProgress: { done: number; total: number } | null = null
   private probeFails = 0
   private idleDelayMs = BASE_WATCH_MS
   private idleFailStreak = 0
@@ -108,6 +111,11 @@ export class BridgeSession {
       error: this.errorMessage,
       diagnostics: this.diagnostics,
       update: this.updateInfo,
+      paused: this.holdOff && this.settings.enabled,
+      lanPasswordSet:
+        typeof this.settings.proxyPassword === 'string' &&
+        this.settings.proxyPassword.length > 0,
+      scan: this.status === 'searching' ? this.scanProgress : null,
       ...wifiBridgeFlags(this.wifiSsid, this.settings, lanAuthOn),
     }
   }
@@ -209,6 +217,9 @@ export class BridgeSession {
 
   /** Switch to a peer from the last scan (or force-connect if still reachable). */
   async selectPhone(ip: string): Promise<BridgeState> {
+    if (ip === this.phoneIp && this.status === 'connected') {
+      return this.getState()
+    }
     if (!isIpv4(ip)) {
       this.errorMessage = 'Некорректный IP'
       this.hooks.onChange()
@@ -235,19 +246,62 @@ export class BridgeSession {
       this.peers = [...this.peers, ip]
     }
 
+    const authCheck = await checkProxyAuth(ip, this.settings.socksPort, 1000, auth)
+    if (authCheck !== 'ok') {
+      this.errorMessage = authCheckMessage(authCheck)
+      this.hooks.onChange()
+      return this.getState()
+    }
+
     await this.relay.start(ip)
     this.phoneIp = ip
     this.probeFails = 0
     this.idleDelayMs = BASE_WATCH_MS
     this.idleFailStreak = 0
-    this.settings = {
-      ...this.settings,
-      manualIp: ip,
-    }
     await this.bindPeerToWifi(ip)
     this.setStatus('connected')
     if (this.settings.wizardDone) this.announceReady()
     return this.getState()
+  }
+
+  /**
+   * Re-scan the network for Happ peers without touching the relay —
+   * refresh the picker list mid-session (no reconnect, no downtime).
+   */
+  async scanPeers(): Promise<BridgeState> {
+    this.scanAbort?.abort()
+    const controller = new AbortController()
+    this.scanAbort = controller
+    await this.refreshWifi()
+    try {
+      const found = await discoverPhones({
+        socksPort: this.settings.socksPort,
+        preferredIps: preferredIpsFromSettings(this.settings, this.wifiSsid),
+        manualIp: this.settings.manualIp,
+        signal: controller.signal,
+        auth: socksAuthFromSettings(this.settings),
+      })
+      const merged = this.phoneIp ? [this.phoneIp, ...found] : found
+      this.peers = [...new Set(merged)]
+    } catch {
+      // aborted / probe burst failed — keep the previous list
+    }
+    this.hooks.onChange()
+    return this.getState()
+  }
+
+  /** Sleep: drop frozen pipes; listeners stay up. */
+  onSuspend(): void {
+    this.relay.dropConnections()
+  }
+
+  /** Wake: reconnect immediately instead of waiting for the watch loop. */
+  onResume(): void {
+    if (!this.settings.enabled || this.holdOff || this.disposed) return
+    this.idleDelayMs = BASE_WATCH_MS
+    this.idleFailStreak = 0
+    this.probeFails = 0
+    void this.connect('network-change')
   }
 
   async updateSettings(patch: Partial<AppSettings>): Promise<BridgeState> {
@@ -349,6 +403,7 @@ export class BridgeSession {
   async dispose(): Promise<void> {
     this.disposed = true
     this.discoverAbort?.abort()
+    this.scanAbort?.abort()
     this.watchAbort?.abort()
     if (this.netPoll) {
       clearInterval(this.netPoll)
@@ -366,14 +421,20 @@ export class BridgeSession {
     await this.refreshWifi()
 
     try {
+      const auth = socksAuthFromSettings(this.settings)
       const preferredIps = preferredIpsFromSettings(this.settings, this.wifiSsid)
 
+      this.scanProgress = null
       const found = await discoverPhones({
         socksPort: this.settings.socksPort,
         preferredIps,
         manualIp: this.settings.manualIp,
         signal: this.discoverAbort.signal,
-        auth: socksAuthFromSettings(this.settings),
+        auth,
+        onProgress: (done, total) => {
+          this.scanProgress = { done, total }
+          if (done % 16 === 0) this.hooks.onChange()
+        },
       })
 
       this.peers = found
@@ -386,6 +447,30 @@ export class BridgeSession {
           this.notifyFail(reason)
         }
         if (reason === 'watchdog-idle') this.bumpIdleBackoff()
+        return false
+      }
+
+      // Never silently bind the only reachable proxy on an untrusted network:
+      // without a LAN password any neighbor's Happ would be auto-picked.
+      // An explicit earlier choice for this SSID (or a manual IP) still counts.
+      const ssidPeer = this.wifiSsid ? this.settings.ssidPeers[this.wifiSsid] : undefined
+      const explicitChoice =
+        Boolean(this.settings.manualIp) || Boolean(ssidPeer && found.includes(ssidPeer))
+      const untrustedNoAuth =
+        !auth &&
+        !explicitChoice &&
+        shouldWarnPublicNoAuth({
+          ssid: this.wifiSsid,
+          homeSsids: this.settings.homeSsids,
+          hasAuth: false,
+        })
+      if (untrustedNoAuth) {
+        await this.relay.stop()
+        this.phoneIp = null
+        this.setStatus('disconnected')
+        this.errorMessage =
+          'Сеть не отмечена как домашняя и пароль LAN не задан — автоподключение отключено. Выберите телефон в списке.'
+        this.hooks.onChange()
         return false
       }
 
@@ -404,6 +489,16 @@ export class BridgeSession {
           found.length > 1
             ? `Найдено ${found.length} прокси. Выберите телефон в списке.`
             : null
+        this.hooks.onChange()
+        return false
+      }
+
+      const authCheck = await checkProxyAuth(chosen, this.settings.socksPort, 1000, auth)
+      if (authCheck !== 'ok') {
+        await this.relay.stop()
+        this.phoneIp = null
+        this.setStatus('disconnected')
+        this.errorMessage = authCheckMessage(authCheck)
         this.hooks.onChange()
         return false
       }
@@ -513,7 +608,7 @@ export class BridgeSession {
     this.announcedFirstConnect = true
     notify(
       'Happ Bridge готов',
-      'Можно закрыть окно. Адреса в меню строки меню - 127.0.0.1 не меняется.',
+      'Можно закрыть окно — приложение останется в строке меню. Адрес 127.0.0.1 не меняется.',
     )
     this.hooks.onFirstConnect?.()
   }
@@ -527,6 +622,17 @@ export class BridgeSession {
 function notify(title: string, body: string): void {
   if (!Notification.isSupported()) return
   new Notification({ title, body }).show()
+}
+
+function authCheckMessage(check: 'auth-required' | 'auth-failed' | 'unreachable'): string {
+  switch (check) {
+    case 'auth-required':
+      return 'Happ требует логин/пароль LAN — укажите их в настройках Bridge.'
+    case 'auth-failed':
+      return 'Happ отклонил логин/пароль LAN — проверьте данные в настройках.'
+    case 'unreachable':
+      return 'Happ не отвечает — проверьте телефон и «Разрешить LAN подключение».'
+  }
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {

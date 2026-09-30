@@ -75,7 +75,17 @@ export function InjectAppsPanel({ onState }: Props) {
 
   return (
     <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
-      <p className="text-sm font-medium text-zinc-200">Прописать в приложения</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium text-zinc-200">Прописать в приложения</p>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void refresh()}
+          className="min-h-8 rounded-md border border-zinc-700 px-2.5 text-xs font-medium text-zinc-300 transition-colors duration-150 hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+        >
+          Обновить статус
+        </button>
+      </div>
       <p className="mt-1 text-xs leading-relaxed text-zinc-500">
         Выберите приложения и нажмите «Прописать» (127.0.0.1) или «Откатить»
         (прямой IP телефона). Автоподмены нет — только вручную.
@@ -129,7 +139,7 @@ export function InjectAppsPanel({ onState }: Props) {
         <button
           type="button"
           disabled={busy}
-          className="shrink-0 text-xs text-zinc-500 transition-colors duration-150 hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+          className="min-h-9 shrink-0 rounded-lg border border-zinc-700 px-3 text-xs font-medium text-zinc-300 transition-colors duration-150 hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
           onClick={() => void run('revert')}
         >
           Откатить

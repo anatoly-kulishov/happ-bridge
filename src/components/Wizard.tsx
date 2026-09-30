@@ -13,7 +13,19 @@ type Props = {
 
 export function Wizard({ state, onDone, onState }: Props) {
   const [step, setStep] = useState(0)
-  const { busy, copied, findPhone, copy } = useBridgeActions(onState)
+  const [lanUser, setLanUser] = useState('')
+  const [lanPass, setLanPass] = useState('')
+  const { busy, copied, findPhone, scanPeers, scanning, copy } = useBridgeActions(onState)
+
+  const runFind = async () => {
+    if (lanUser.trim() || lanPass) {
+      await window.happBridge.saveSettings({
+        proxyUser: lanUser.trim() || null,
+        ...(lanPass ? { proxyPassword: lanPass } : {}),
+      })
+    }
+    return findPhone()
+  }
 
   const primary = useMemo(() => {
     if (step === 0) {
@@ -27,7 +39,7 @@ export function Wizard({ state, onDone, onState }: Props) {
         label: busy ? 'Ищем…' : 'Найти телефон',
         disabled: busy,
         run: () => {
-          void findPhone().then((next) => {
+          void runFind().then((next) => {
             if (next.status === 'connected') setStep(2)
           })
         },
@@ -40,7 +52,7 @@ export function Wizard({ state, onDone, onState }: Props) {
         void onDone()
       },
     }
-  }, [step, state.status, busy, findPhone, onDone])
+  }, [step, state.status, busy, findPhone, runFind, onDone])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -97,11 +109,38 @@ export function Wizard({ state, onDone, onState }: Props) {
                 phoneIp={state.phoneIp}
                 lanAuthOn={state.lanAuthOn}
                 enabled={state.settings.enabled}
+                scan={state.scan}
               />
               <p className="text-sm text-zinc-400">
                 Нажмите кнопку - найдём телефоны с Happ в сети. Если их несколько,
                 выберите нужный.
               </p>
+              {state.status !== 'connected' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block text-sm">
+                    <span className="text-zinc-400">Логин Happ LAN</span>
+                    <input
+                      type="text"
+                      value={lanUser}
+                      onChange={(e) => setLanUser(e.target.value)}
+                      placeholder="если задан в Happ"
+                      autoComplete="off"
+                      className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 font-mono text-sm text-white outline-none transition-colors duration-150 focus-visible:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400/50"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="text-zinc-400">Пароль Happ LAN</span>
+                    <input
+                      type="password"
+                      value={lanPass}
+                      onChange={(e) => setLanPass(e.target.value)}
+                      placeholder="если задан в Happ"
+                      autoComplete="off"
+                      className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 font-mono text-sm text-white outline-none transition-colors duration-150 focus-visible:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400/50"
+                    />
+                  </label>
+                </div>
+              )}
               {state.error && (
                 <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
                   {state.error}
@@ -111,6 +150,8 @@ export function Wizard({ state, onDone, onState }: Props) {
                 peers={state.peers}
                 selectedIp={state.phoneIp}
                 busy={busy}
+                onRefresh={() => void scanPeers()}
+                refreshing={scanning}
                 onSelect={async (ip) => {
                   const next = await window.happBridge.selectPhone(ip)
                   onState(next)

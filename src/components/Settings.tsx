@@ -24,14 +24,26 @@ export function Settings({ state, onState, onShowWizard }: Props) {
   const [saved, setSaved] = useState(false)
   const [advanced, setAdvanced] = useState(false)
   const [showPresets, setShowPresets] = useState(false)
-  const { busy, copied, findPhone, copy, diagnose, checkUpdates } =
+  const { busy, copied, findPhone, scanPeers, scanning, copy, diagnose, checkUpdates } =
     useBridgeActions(onState)
   const [saving, setSaving] = useState(false)
   const [selecting, setSelecting] = useState(false)
   const [markingHome, setMarkingHome] = useState(false)
   const [toggling, setToggling] = useState(false)
+  const [diagHidden, setDiagHidden] = useState(false)
+  const [diagCopied, setDiagCopied] = useState(false)
+
+  const bridgeActive = state.settings.enabled && state.status !== 'disconnected'
+  const dirty =
+    manualIp.trim() !== (state.settings.manualIp ?? '') ||
+    socksPort !== String(state.settings.socksPort) ||
+    httpPort !== String(state.settings.httpPort) ||
+    proxyUser.trim() !== (state.settings.proxyUser ?? '') ||
+    proxyPassword.length > 0 ||
+    clearPassword
 
   const selectPeer = async (ip: string) => {
+    if (ip === state.phoneIp) return
     setSelecting(true)
     try {
       onState(await window.happBridge.selectPhone(ip))
@@ -65,6 +77,12 @@ export function Settings({ state, onState, onShowWizard }: Props) {
     } finally {
       setToggling(false)
     }
+  }
+
+  const copyDiagnostics = async () => {
+    await window.happBridge.copyDiagnostics()
+    setDiagCopied(true)
+    window.setTimeout(() => setDiagCopied(false), 1500)
   }
 
   const save = async () => {
@@ -111,6 +129,8 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           phoneIp={state.phoneIp}
           lanAuthOn={state.lanAuthOn}
           enabled={state.settings.enabled}
+          paused={state.paused}
+          scan={state.scan}
         />
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -142,9 +162,11 @@ export function Settings({ state, onState, onShowWizard }: Props) {
         )}
         {state.settings.enabled &&
           state.status === 'disconnected' &&
-          state.peers.length > 1 && (
+          state.peers.length > 0 && (
             <p className="mt-2 text-xs leading-relaxed text-zinc-500">
-              Найдено несколько телефонов - выберите нужный в списке.
+              {state.peers.length > 1
+                ? 'Найдено несколько телефонов - выберите нужный в списке.'
+                : 'Телефон найден - нажмите «выбрать» в списке.'}
             </p>
           )}
 
@@ -180,6 +202,9 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           peers={state.peers}
           selectedIp={state.phoneIp}
           busy={busy || selecting}
+          familiarIps={familiarIps(state)}
+          onRefresh={() => void scanPeers()}
+          refreshing={scanning}
           onSelect={selectPeer}
         />
 
@@ -188,12 +213,14 @@ export function Settings({ state, onState, onShowWizard }: Props) {
             label="SOCKS5"
             value={state.socksLocal}
             copied={copied === 'socks'}
+            disabled={!bridgeActive}
             onCopy={() => void copy('socks')}
           />
           <ProxyCopyButton
             label="HTTP"
             value={state.httpLocal}
             copied={copied === 'http'}
+            disabled={!bridgeActive}
             onCopy={() => void copy('http')}
           />
         </div>
@@ -226,34 +253,66 @@ export function Settings({ state, onState, onShowWizard }: Props) {
 
         <InjectAppsPanel onState={onState} />
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
             disabled={busy}
-            onClick={() => void findPhone()}
-            className="text-xs text-zinc-500 transition-colors duration-150 hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+            onClick={() => {
+              setDiagHidden(false)
+              void findPhone()
+            }}
+            className="min-h-9 rounded-lg border border-zinc-700 px-3 text-xs font-medium text-zinc-200 transition-colors duration-150 hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
           >
-            {busy ? 'Ищем…' : 'Найти снова'}
+            {busy
+              ? 'Ищем…'
+              : state.settings.enabled
+                ? 'Найти снова'
+                : 'Включить и найти'}
           </button>
           <button
             type="button"
             disabled={busy}
-            onClick={() => void diagnose()}
-            className="text-xs text-zinc-500 transition-colors duration-150 hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+            onClick={() => {
+              setDiagHidden(false)
+              void diagnose()
+            }}
+            className="min-h-9 rounded-lg border border-zinc-700 px-3 text-xs font-medium text-zinc-200 transition-colors duration-150 hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
           >
             Диагностика
           </button>
         </div>
 
-        {state.diagnostics && state.diagnostics.length > 0 && (
-          <DiagnosticsList items={state.diagnostics} />
+        {state.diagnostics && state.diagnostics.length > 0 && !diagHidden && (
+          <div>
+            <div className="mt-3 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => void copyDiagnostics()}
+                className="text-xs text-zinc-500 transition-colors duration-150 hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+              >
+                {diagCopied ? 'Скопировано' : 'Скопировать отчёт'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDiagHidden(true)}
+                className="text-xs text-zinc-500 transition-colors duration-150 hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+              >
+                Скрыть
+              </button>
+            </div>
+            <DiagnosticsList items={state.diagnostics} />
+          </div>
         )}
 
         <label className="mt-5 flex cursor-pointer items-center gap-3 text-sm text-zinc-300">
           <input
             type="checkbox"
             checked={openAtLogin}
-            onChange={(e) => setOpenAtLogin(e.target.checked)}
+            onChange={(e) => {
+              const next = e.target.checked
+              setOpenAtLogin(next)
+              void window.happBridge.saveSettings({ openAtLogin: next }).then(onState)
+            }}
             className="size-4 rounded border-zinc-600 accent-sky-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
           />
           Запускать при входе в macOS
@@ -275,7 +334,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                 setProxyPassword(v)
                 setClearPassword(false)
               }}
-              placeholder={state.lanAuthOn ? 'оставлен в Keychain' : '••••'}
+              placeholder={state.lanPasswordSet ? 'оставлен в Keychain' : '••••'}
               type="password"
             />
           </div>
@@ -345,6 +404,9 @@ export function Settings({ state, onState, onShowWizard }: Props) {
               <Field label="Порт SOCKS5" value={socksPort} onChange={setSocksPort} />
               <Field label="Порт HTTP" value={httpPort} onChange={setHttpPort} />
             </div>
+            <p className="text-xs leading-relaxed text-zinc-600">
+              После смены портов обновите адрес в приложениях (Telegram, Cursor, Firefox…).
+            </p>
           </div>
         )}
       </div>
@@ -353,6 +415,9 @@ export function Settings({ state, onState, onShowWizard }: Props) {
         <button type="button" className="btn-ghost" onClick={onShowWizard}>
           Мастер
         </button>
+        {dirty && !saved && (
+          <span className="text-xs text-amber-200/80">Есть несохранённые изменения</span>
+        )}
         <div className="flex-1" />
         <button
           type="button"
@@ -360,11 +425,22 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           onClick={() => void save()}
           className="btn-primary min-w-[7.5rem]"
         >
-          {saved ? 'Сохранено' : saving ? '…' : 'Сохранить'}
+          {saved ? 'Сохранено' : saving ? '…' : dirty ? 'Сохранить ●' : 'Сохранить'}
         </button>
       </footer>
     </div>
   )
+}
+
+function familiarIps(state: BridgeState): string[] {
+  const ssidPeer = state.wifiSsid
+    ? state.settings.ssidPeers[state.wifiSsid]
+    : undefined
+  return [
+    ...(state.settings.lastPhoneIp ? [state.settings.lastPhoneIp] : []),
+    ...(ssidPeer ? [ssidPeer] : []),
+    ...state.settings.recentPhoneIps,
+  ]
 }
 
 function DiagnosticsList({ items }: { items: DiagnosticCheck[] }) {

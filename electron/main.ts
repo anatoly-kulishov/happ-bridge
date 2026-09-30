@@ -6,6 +6,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  powerMonitor,
   Tray,
 } from 'electron'
 import fs from 'node:fs'
@@ -80,7 +81,7 @@ function createWindow(show = true): void {
   })
 }
 
-function trayIcon(color: 'green' | 'yellow' | 'red'): Electron.NativeImage {
+function trayIcon(color: 'green' | 'yellow' | 'red' | 'grey'): Electron.NativeImage {
   const file = `tray-${color}.png`
   const file2x = `tray-${color}@2x.png`
   const bases = [
@@ -112,14 +113,35 @@ function trayIcon(color: 'green' | 'yellow' | 'red'): Electron.NativeImage {
 }
 
 /** Always-visible status LED if pack paths break. */
-function fallbackTrayIcon(color: 'green' | 'yellow' | 'red'): Electron.NativeImage {
-  const hex =
-    color === 'green' ? '#34d399' : color === 'yellow' ? '#fbbf24' : '#f87171'
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36"><circle cx="18" cy="18" r="12" fill="${hex}"/></svg>`
-  const img = nativeImage.createFromDataURL(
-    `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`,
-  )
-  return img
+function fallbackTrayIcon(color: 'green' | 'yellow' | 'red' | 'grey'): Electron.NativeImage {
+  const fill =
+    color === 'green'
+      ? '#34d399'
+      : color === 'yellow'
+        ? '#fbbf24'
+        : color === 'grey'
+          ? '#71717a'
+          : '#f87171'
+  const stroke =
+    color === 'grey'
+      ? '#71717a'
+      : color === 'green'
+        ? '#16a34a'
+        : color === 'yellow'
+          ? '#d97706'
+          : '#dc2626'
+  const isRing = color === 'grey'
+  const r = 9
+  const cx = 18
+  const cy = 18
+  const sw = 3
+
+  const svg = isRing
+    ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${stroke}" stroke-width="${sw}"/></svg>`
+    : `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"><circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${stroke}" stroke-width="${sw}"/></svg>`
+
+  const dataUrl = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+  return nativeImage.createFromDataURL(dataUrl)
 }
 
 function syncTray(state: {
@@ -129,6 +151,7 @@ function syncTray(state: {
   httpLocal: string
   lanAuthOn: boolean
   publicWifiNoAuth: boolean
+  paused: boolean
   settings: { enabled: boolean }
 }): void {
   if (!tray || !session) return
@@ -139,29 +162,44 @@ function syncTray(state: {
     publicWifiNoAuth: state.publicWifiNoAuth,
   })
   const enabled = state.settings.enabled
-  const tip = enabled ? sec.tip : 'Happ Bridge · мост выключен'
-  const key = `${state.status}|${state.phoneIp ?? ''}|${sec.cacheKey}|${enabled ? 1 : 0}`
+  const active = enabled && state.status !== 'disconnected'
+  const neutral = !enabled || state.paused
+  const tip = !enabled
+    ? 'Happ Bridge · мост выключен'
+    : state.paused
+      ? 'Happ Bridge · отключено вами'
+      : sec.tip
+  const key = `${state.status}|${state.phoneIp ?? ''}|${sec.cacheKey}|${enabled ? 1 : 0}|${state.paused ? 1 : 0}`
   if (key === lastTrayKey) return
   lastTrayKey = key
 
-  tray.setImage(trayIcon(enabled ? ui.tone : 'red'))
+  tray.setImage(trayIcon(neutral ? 'grey' : ui.tone))
   tray.setToolTip(tip)
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
-        label: enabled ? ui.label : 'Мост выключен',
+        label: !enabled
+          ? 'Мост выключен'
+          : state.paused
+            ? 'Отключено вами'
+            : ui.label,
         enabled: false,
       },
       ...(sec.menuLabel && enabled
         ? [{ label: sec.menuLabel, enabled: false as const }]
         : []),
+      ...(enabled && state.phoneIp
+        ? [{ label: `Телефон: ${state.phoneIp}`, enabled: false as const }]
+        : []),
       { type: 'separator' },
       {
         label: `Скопировать SOCKS5 (${state.socksLocal})`,
+        enabled: active,
         click: () => clipboard.writeText(state.socksLocal),
       },
       {
         label: `Скопировать HTTP (${state.httpLocal})`,
+        enabled: active,
         click: () => clipboard.writeText(state.httpLocal),
       },
       { type: 'separator' },
@@ -181,21 +219,6 @@ function syncTray(state: {
             },
           ]
         : []),
-      {
-        label: 'Найти снова',
-        click: () => {
-          void session?.connect('user').then(() => broadcast())
-        },
-      },
-      {
-        label: 'Диагностика',
-        click: () => {
-          void session?.diagnose().then(() => {
-            broadcast()
-            createWindow(true)
-          })
-        },
-      },
       { label: 'Настройки…', click: () => createWindow(true) },
       { type: 'separator' },
       {
@@ -231,6 +254,18 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
   ipcMain.handle('bridge:findPhone', async () => {
     const ok = await session!.connect('user')
     return { ok, state: session!.getState() }
+  })
+
+  ipcMain.handle('bridge:scanPeers', async () => session!.scanPeers())
+
+  ipcMain.handle('bridge:copyDiagnostics', () => {
+    const s = session!.getState()
+    if (!s.diagnostics || s.diagnostics.length === 0) return ''
+    const text = s.diagnostics
+      .map((d) => `${d.ok ? 'OK' : 'ERR'} ${d.label}\n  ${d.detail}`)
+      .join('\n')
+    clipboard.writeText(text)
+    return text
   })
 
   ipcMain.handle('bridge:disconnect', async () => session!.disconnect())
@@ -352,6 +387,9 @@ app.whenReady().then(async () => {
   registerIpc(updater)
   createTray()
   applyOpenAtLogin(session.getState().settings.openAtLogin)
+
+  powerMonitor.on('suspend', () => session?.onSuspend())
+  powerMonitor.on('resume', () => session?.onResume())
 
   if (!session.getState().settings.wizardDone) createWindow(true)
 

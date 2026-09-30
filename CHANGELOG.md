@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.1.6 - 2026-09-30
+
+### Added
+- Re-scan button for the peer list («Обновить» in Settings / Wizard) - refreshes found phones without dropping the current relay connection
+- Scan progress bar while searching (`проверено N из M`)
+- Suspend/resume handling: live pipes dropped on sleep, immediate reconnect on wake (no more dead proxy for ~30s after opening the lid)
+- Neutral «Отключено вами» / «Мост выключен» states - grey badge and grey tray icon instead of alarm-red
+- LAN login/password fields in the first-run wizard (fixes «Happ requires a password» dead-end)
+- «знакомый» marker for previously used phone IPs in the peer list
+- Diagnostics report: copy to clipboard + hide
+- «Обновить статус» button in «Прописать в приложения»
+- Update downloaded notification («перезапустите приложение для установки»)
+- Unsaved-changes indicator in Settings footer («Сохранить ●»); «Запускать при входе» applies immediately
+- Tray menu shows the connected phone IP
+
+### Fixed
+- End-to-end LAN auth check before reporting «Подключено» - no more green status when Happ will reject all traffic (wrong/missing password)
+- No silent auto-connect to the only reachable proxy on an untrusted network (not home + no LAN password); explicit choice (peer select / manual IP / per-SSID peer) still auto-reconnects
+- Selecting a peer no longer overwrites «IP телефона вручную»
+- Copy buttons (SOCKS5/HTTP) disabled while the bridge is off or disconnected - no more dead addresses in clipboard
+- Clicking the already-selected peer no longer re-connects
+- Password placeholder «оставлен в Keychain» only when a password actually exists
+- «Откатить», «Найти снова», «Диагностика» are now visible buttons, not faint text links
+- Typo in the ready notification
+
+### Changed
+- Tray menu trimmed to essentials (status, copy SOCKS5/HTTP, enable/disable bridge, disconnect phone, settings, quit) - rescan / find / diagnostics now live in the Settings window
+- Disabled-menu-bar tray icon is now a grey ring instead of a solid dot, so it stays visible on dark menu bars
+
 ## 1.1.5 - 2026-09-24
 
 ### Added

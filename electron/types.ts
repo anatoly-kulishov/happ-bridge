@@ -78,9 +78,15 @@ export type BridgeState = {
   lanAuthOn: boolean
   /** No LAN auth while on non-home Wi‑Fi. */
   publicWifiNoAuth: boolean
+  /** User pressed Disconnect while the bridge stayed enabled (no auto-reconnect). */
+  paused: boolean
+  /** LAN password is stored in Keychain (renderer never sees it). */
+  lanPasswordSet: boolean
+  /** Subnet scan progress while status is 'searching'. */
+  scan: { done: number; total: number } | null
 }
 
-export type StatusTone = 'green' | 'yellow' | 'red'
+export type StatusTone = 'green' | 'yellow' | 'red' | 'grey'
 
 export type StatusPresentation = {
   tone: StatusTone

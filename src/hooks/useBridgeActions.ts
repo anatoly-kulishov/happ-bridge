@@ -17,6 +17,16 @@ export function useBridgeActions(onState: (s: BridgeState) => void) {
     }
   }, [onState])
 
+  const [scanning, setScanning] = useState(false)
+  const scanPeers = useCallback(async () => {
+    setScanning(true)
+    try {
+      onState(await window.happBridge.scanPeers())
+    } finally {
+      setScanning(false)
+    }
+  }, [onState])
+
   const copy = useCallback(async (kind: CopyPreset) => {
     await window.happBridge.copy(kind)
     setCopied(kind)
@@ -40,5 +50,5 @@ export function useBridgeActions(onState: (s: BridgeState) => void) {
     return state
   }, [onState])
 
-  return { busy, copied, findPhone, copy, diagnose, checkUpdates }
+  return { busy, copied, findPhone, scanPeers, scanning, copy, diagnose, checkUpdates }
 }

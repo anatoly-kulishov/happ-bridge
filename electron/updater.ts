@@ -41,7 +41,10 @@ export function createUpdater(hooks: UpdateHooks): {
         autoUpdater.autoInstallOnAppQuit = true
 
         return await new Promise<UpdateInfo>((resolve) => {
+          let settled = false
           const done = (next: UpdateInfo) => {
+            if (settled) return
+            settled = true
             cleanup()
             emit(next)
             resolve(next)
@@ -51,6 +54,16 @@ export function createUpdater(hooks: UpdateHooks): {
             autoUpdater.removeListener('update-available', onAvailable)
             autoUpdater.removeListener('update-not-available', onNot)
             autoUpdater.removeListener('error', onError)
+            autoUpdater.removeListener('update-downloaded', onDownloaded)
+          }
+
+          // Download finishes after checkForUpdates resolves — keep the user posted.
+          const onDownloaded = (u: { version: string }) => {
+            emit({
+              status: 'available',
+              message: `Версия ${u.version} скачана — перезапустите приложение для установки.`,
+              version: u.version,
+            })
           }
 
           const onAvailable = (u: { version: string }) => {
@@ -77,6 +90,7 @@ export function createUpdater(hooks: UpdateHooks): {
           autoUpdater.once('update-available', onAvailable)
           autoUpdater.once('update-not-available', onNot)
           autoUpdater.once('error', onError)
+          autoUpdater.on('update-downloaded', onDownloaded)
 
           void autoUpdater.checkForUpdates().catch((err: Error) => onError(err))
         })

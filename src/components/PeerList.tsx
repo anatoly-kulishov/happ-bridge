@@ -4,15 +4,31 @@ type Props = {
   peers: string[]
   selectedIp: string | null
   busy?: boolean
+  /** IPs the user has connected to before (recent / per-SSID). */
+  familiarIps?: string[]
+  /** Show a «refresh list» button that re-scans without dropping the relay. */
+  onRefresh?: () => void | Promise<void>
+  refreshing?: boolean
   onSelect: (ip: string) => void | Promise<void>
 }
 
-export function PeerList({ peers, selectedIp, busy, onSelect }: Props) {
+export function PeerList({
+  peers,
+  selectedIp,
+  busy,
+  familiarIps,
+  onRefresh,
+  refreshing,
+  onSelect,
+}: Props) {
   const [picking, setPicking] = useState<string | null>(null)
 
   if (peers.length === 0) return null
 
+  const familiar = new Set(familiarIps ?? [])
+
   const choose = async (ip: string) => {
+    if (ip === selectedIp) return
     setPicking(ip)
     try {
       await onSelect(ip)
@@ -23,12 +39,24 @@ export function PeerList({ peers, selectedIp, busy, onSelect }: Props) {
 
   return (
     <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-      <p className="text-sm font-medium text-zinc-200">
-        Телефоны в сети
-        <span className="ml-1.5 text-xs font-normal text-zinc-500">
-          {peers.length}
-        </span>
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium text-zinc-200">
+          Телефоны в сети
+          <span className="ml-1.5 text-xs font-normal text-zinc-500">
+            {peers.length}
+          </span>
+        </p>
+        {onRefresh && (
+          <button
+            type="button"
+            disabled={refreshing || busy || Boolean(picking)}
+            onClick={() => void onRefresh()}
+            className="min-h-8 rounded-md border border-zinc-700 px-2.5 text-xs font-medium text-zinc-300 transition-colors duration-150 hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+          >
+            {refreshing ? 'Сканируем…' : 'Обновить'}
+          </button>
+        )}
+      </div>
       <p className="mt-1 text-xs text-zinc-500">
         Несколько человек могут раздавать Happ. Выберите нужный IP.
       </p>
@@ -57,6 +85,9 @@ export function PeerList({ peers, selectedIp, busy, onSelect }: Props) {
                   aria-hidden
                 />
                 <span className="flex-1 font-mono tabular-nums">{ip}</span>
+                {!active && familiar.has(ip) && (
+                  <span className="shrink-0 text-xs text-emerald-400/80">знакомый</span>
+                )}
                 <span className="text-xs text-zinc-500">
                   {loading ? '…' : active ? 'выбран' : 'выбрать'}
                 </span>

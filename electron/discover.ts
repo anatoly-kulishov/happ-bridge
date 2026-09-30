@@ -12,6 +12,8 @@ export type DiscoverOptions = {
   scanSubnet?: boolean
   /** Happ LAN credentials — probe requires successful SOCKS5 user/pass. */
   auth?: SocksAuth | null
+  /** Probed-hosts progress for UI (done, total). */
+  onProgress?: (done: number, total: number) => void
 }
 
 /** First hit only (preferred → subnet). Kept for fast reconnect / tests. */
@@ -32,24 +34,12 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
     signal,
     scanSubnet = true,
     auth = null,
+    onProgress,
   } = opts
 
   const hits: string[] = []
   const hitSet = new Set<string>()
   const probeMs = auth ? Math.max(timeoutMs, 500) : timeoutMs
-
-  const tryOne = async (ip: string, abort?: AbortSignal): Promise<string | null> => {
-    if (signal?.aborted || abort?.aborted) return null
-    const ok = await probeSocks5(ip, socksPort, probeMs, abort ?? signal, auth)
-    if (signal?.aborted || abort?.aborted) return null
-    return ok ? ip : null
-  }
-
-  const record = (ip: string | null) => {
-    if (!ip || hitSet.has(ip)) return
-    hitSet.add(ip)
-    hits.push(ip)
-  }
 
   const ordered: string[] = []
   const seen = new Set<string>()
@@ -62,6 +52,24 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
   push(manualIp ?? null)
   for (const ip of preferredIps) push(ip)
 
+  const hosts = scanSubnet ? prioritizedHosts(seen) : []
+  let probed = 0
+  const total = ordered.length + hosts.length
+  const tryOne = async (ip: string, abort?: AbortSignal): Promise<string | null> => {
+    if (signal?.aborted || abort?.aborted) return null
+    const ok = await probeSocks5(ip, socksPort, probeMs, abort ?? signal, auth)
+    probed += 1
+    onProgress?.(probed, total)
+    if (signal?.aborted || abort?.aborted) return null
+    return ok ? ip : null
+  }
+
+  const record = (ip: string | null) => {
+    if (!ip || hitSet.has(ip)) return
+    hitSet.add(ip)
+    hits.push(ip)
+  }
+
   for (const ip of ordered) {
     if (signal?.aborted) return hits
     record(await tryOne(ip, signal))
@@ -70,12 +78,7 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
   if (signal?.aborted) return hits
   if (!scanSubnet) return hits
 
-  const scanned = await scanAllHosts(
-    prioritizedHosts(seen),
-    tryOne,
-    concurrency,
-    signal,
-  )
+  const scanned = await scanAllHosts(hosts, tryOne, concurrency, signal)
   for (const ip of scanned) record(ip)
   return hits
 }

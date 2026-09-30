@@ -136,6 +136,11 @@ export class ProxyRelay {
     this.bound = null
   }
 
+  /** Kill live pipes but keep listeners (sleep / resume). */
+  dropConnections(): void {
+    this.dropPipes()
+  }
+
   private dropPipes(): void {
     for (const pipe of this.pipes) {
       pipe.client.destroy()
@@ -334,5 +339,90 @@ export function probeSocks5(
     socket.on('timeout', () => done(false))
     socket.on('error', () => done(false))
     socket.on('close', () => done(false))
+  })
+}
+
+/**
+ * End-to-end LAN auth check against a Happ SOCKS5 peer.
+ * Unlike probeSocks5, distinguishes "Happ requires a password" (0x02 without
+ * creds) and "Happ rejected the password" from a plain reachable peer —
+ * so the UI never shows «Подключено» for a proxy that will drop traffic.
+ */
+export type ProxyAuthCheck = 'ok' | 'auth-required' | 'auth-failed' | 'unreachable'
+
+export function checkProxyAuth(
+  host: string,
+  port: number,
+  timeoutMs = 1000,
+  auth?: SocksAuth | null,
+): Promise<ProxyAuthCheck> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port, family: 4 })
+    let settled = false
+
+    const done = (result: ProxyAuthCheck) => {
+      if (settled) return
+      settled = true
+      clearTimeout(hardTimer)
+      socket.destroy()
+      resolve(result)
+    }
+
+    const hardTimer = setTimeout(() => done('unreachable'), timeoutMs)
+    socket.setTimeout(timeoutMs)
+
+    // Helper: register a ONE-TIME data listener BEFORE writing, then write.
+    // This avoids missing a server reply that arrives before the listener is attached.
+    const writeAndWait = (
+      data: Buffer,
+      accept: (buf: Buffer) => ProxyAuthCheck | null,
+    ): void => {
+      if (settled) return
+      socket.once('data', (chunk) => {
+        if (settled) return
+        const result = accept(Buffer.from(chunk))
+        if (result !== null) done(result)
+        else done('unreachable')
+      })
+      if (settled) return
+      socket.write(data)
+    }
+
+    socket.on('connect', () => {
+      if (settled) return
+
+      // Step 1: SOCKS5 greeting
+      writeAndWait(Buffer.from([0x05, 0x01, auth ? 0x02 : 0x00]), (buf) => {
+        if (buf.length < 2) return null
+        const ver = buf[0]
+        const method = buf[1]
+        if (ver !== 0x05 || (method !== 0x00 && method !== 0x02)) return 'unreachable'
+        if (method === 0x00) return 'ok' // no-auth peer
+        if (!auth) return 'auth-required' // auth required but no creds provided
+        if (method === 0x02) {
+          // Step 2: RFC1929 credentials
+          const u = Buffer.from(auth.user, 'utf8')
+          const p = Buffer.from(auth.pass, 'utf8')
+          if (u.length > 255 || p.length > 255) return 'auth-failed'
+          const creds = Buffer.concat([
+            Buffer.from([0x01, u.length]),
+            u,
+            Buffer.from([p.length]),
+            p,
+          ])
+          // Credentials sent → wait for auth reply (fresh once)
+          writeAndWait(creds, (b) => {
+            if (b.length < 2) return null
+            return b[0] === 0x01 && b[1] === 0x00 ? 'ok' : 'auth-failed'
+          })
+          return null // async; result via writeAndWait's once
+        }
+        return 'unreachable'
+      })
+    })
+
+    socket.on('timeout', () => done('unreachable'))
+    socket.on('error', () => done('unreachable'))
+    socket.on('close', () => { if (!settled) done('unreachable') })
   })
 }
