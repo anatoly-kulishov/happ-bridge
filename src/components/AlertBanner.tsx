@@ -1,7 +1,7 @@
-import { AlertTriangle, CircleAlert, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, CircleAlert, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
-export type AlertTone = 'danger' | 'warning'
+export type AlertTone = 'danger' | 'warning' | 'success'
 
 type Props = {
   tone?: AlertTone
@@ -24,6 +24,27 @@ const toneClass: Record<AlertTone, { box: string; icon: string; title: string; b
     title: 'text-amber-50',
     body: 'text-amber-100/75',
   },
+  success: {
+    box: 'border-emerald-500/35 bg-emerald-500/10',
+    icon: 'text-emerald-300',
+    title: 'text-emerald-50',
+    body: 'text-emerald-100/75',
+  },
+}
+
+function defaultIcon(tone: AlertTone): LucideIcon {
+  switch (tone) {
+    case 'warning':
+      return AlertTriangle
+    case 'success':
+      return CheckCircle2
+    case 'danger':
+      return CircleAlert
+    default: {
+      const _exhaustive: never = tone
+      return _exhaustive
+    }
+  }
 }
 
 /** Structured alert used for connection errors and network warnings. */
@@ -35,7 +56,7 @@ export function AlertBanner({
   icon: Icon,
 }: Props) {
   const t = toneClass[tone]
-  const Glyph = Icon ?? (tone === 'warning' ? AlertTriangle : CircleAlert)
+  const Glyph = Icon ?? defaultIcon(tone)
   return (
     <div className={`rounded-xl border p-3 ${t.box}`} role="alert">
       <div className="flex items-start gap-2.5">

@@ -1,5 +1,6 @@
-import { RefreshCw, Check } from 'lucide-react'
+import { Check, Loader2, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
+import { BusyIcon } from './BusyIcon'
 
 type Props = {
   peers: string[]
@@ -58,10 +59,7 @@ export function PeerList({
               onClick={() => void onRefresh()}
               className="flex h-7 items-center gap-1 rounded-md border border-zinc-700 px-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
             >
-              <RefreshCw
-                size={13}
-                className={refreshing ? 'animate-spin' : ''}
-              />
+              <BusyIcon busy={Boolean(refreshing)} icon={RefreshCw} size={13} />
               {refreshing ? 'Сканируем…' : 'Обновить'}
             </button>
           )}
@@ -104,8 +102,17 @@ export function PeerList({
                 {!active && familiar.has(ip) && (
                   <span className="shrink-0 text-xs text-emerald-400/80">знакомый</span>
                 )}
-                <span className="text-xs text-zinc-500">
-                  {loading ? '…' : active ? 'выбран' : 'выбрать'}
+                <span className="inline-flex min-w-[3.5rem] items-center justify-end gap-1 text-xs text-zinc-500">
+                  {loading ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin" aria-hidden />
+                      выбор
+                    </>
+                  ) : active ? (
+                    'выбран'
+                  ) : (
+                    'выбрать'
+                  )}
                 </span>
               </button>
             </li>

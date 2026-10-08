@@ -1,8 +1,9 @@
-import { RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { BridgeState } from '../../electron/types'
 import { useBridgeActions } from '../hooks/useBridgeActions'
 import { AlertBanner, parseBridgeError } from './AlertBanner'
+import { BusyIcon } from './BusyIcon'
 import { PeerList } from './PeerList'
 import { ProxyCopyButton } from './ProxyCopyButton'
 import { StatusBadge } from './StatusBadge'
@@ -33,15 +34,17 @@ export function Wizard({ state, onDone, onState }: Props) {
 
   const primary = useMemo(() => {
     if (step === 0) {
-      return { label: 'Дальше', disabled: false, run: () => setStep(1) }
+      return { label: 'Дальше', disabled: false, busy: false, icon: null as null, run: () => setStep(1) }
     }
     if (step === 1) {
       if (state.status === 'connected') {
-        return { label: 'Дальше', disabled: false, run: () => setStep(2) }
+        return { label: 'Дальше', disabled: false, busy: false, icon: null as null, run: () => setStep(2) }
       }
       return {
         label: busy ? 'Ищем…' : 'Найти телефон',
         disabled: busy,
+        busy,
+        icon: Search,
         run: () => {
           void runFind().then((next) => {
             if (next.status === 'connected') setStep(2)
@@ -52,11 +55,13 @@ export function Wizard({ state, onDone, onState }: Props) {
     return {
       label: 'Готово',
       disabled: false,
+      busy: false,
+      icon: null as null,
       run: () => {
         void onDone()
       },
     }
-  }, [step, state.status, busy, findPhone, runFind, onDone])
+  }, [step, state.status, busy, runFind, onDone])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -156,8 +161,8 @@ export function Wizard({ state, onDone, onState }: Props) {
                       className="flex h-8 items-center gap-1 rounded-lg border border-red-400/30 bg-red-500/10 px-2.5 text-xs font-medium text-red-50 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
                       onClick={() => void runFind()}
                     >
-                      <RefreshCw size={14} />
-                      Повторить
+                      <BusyIcon busy={busy} icon={RefreshCw} size={14} />
+                      {busy ? 'Ищем…' : 'Повторить'}
                     </button>
                   }
                 >
@@ -176,16 +181,18 @@ export function Wizard({ state, onDone, onState }: Props) {
                   if (next.status === 'connected') setStep(2)
                 }}
               />
-              {state.status === 'disconnected' && state.peers.length === 0 && (
-                <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-                  Телефон не виден. Проверьте Wi‑Fi и Happ.
-                </p>
+              {state.status === 'disconnected' && state.peers.length === 0 && !bridgeError && (
+                <AlertBanner tone="danger" title="Телефон не виден">
+                  Проверьте Wi‑Fi, тумблер «Разрешить LAN подключение» в Happ и доступ к
+                  локальной сети для Happ Bridge.
+                </AlertBanner>
               )}
               {state.status === 'connected' && (
-                <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
-                  Телефон выбран
-                  {state.phoneIp ? `: ${state.phoneIp}` : ''}.
-                </p>
+                <AlertBanner tone="success" title="Телефон выбран">
+                  {state.phoneIp
+                    ? `${state.phoneIp} — можно переходить дальше.`
+                    : 'Можно переходить дальше.'}
+                </AlertBanner>
               )}
             </div>
           )}
@@ -246,9 +253,14 @@ export function Wizard({ state, onDone, onState }: Props) {
         <button
           type="button"
           disabled={primary.disabled}
-          className="btn-primary min-w-[7.5rem]"
+          className="btn-primary flex min-w-[7.5rem] items-center justify-center gap-1.5"
           onClick={primary.run}
         >
+          {primary.icon ? (
+            <BusyIcon busy={primary.busy} icon={primary.icon} size={16} />
+          ) : primary.busy ? (
+            <Loader2 size={16} className="animate-spin" aria-hidden />
+          ) : null}
           {primary.label}
         </button>
       </footer>

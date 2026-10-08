@@ -19,6 +19,7 @@ import type { BridgeState, DiagnosticCheck } from '../../electron/types'
 import { DEFAULT_SETTINGS } from '../../electron/types'
 import { useBridgeActions } from '../hooks/useBridgeActions'
 import { AlertBanner, parseBridgeError } from './AlertBanner'
+import { BusyIcon } from './BusyIcon'
 import { Card } from './Card'
 import { InjectAppsPanel } from './InjectAppsPanel'
 import { PeerList } from './PeerList'
@@ -49,8 +50,18 @@ export function Settings({ state, onState, onShowWizard }: Props) {
   const [advanced, setAdvanced] = useState(false)
   const [showPresets, setShowPresets] = useState(false)
   const advancedRef = useRef<HTMLDivElement>(null)
-  const { busy, copied, findPhone, scanPeers, scanning, copy, diagnose, checkUpdates } =
-    useBridgeActions(onState)
+  const {
+    busy,
+    diagnosing,
+    checkingUpdates,
+    copied,
+    findPhone,
+    scanPeers,
+    scanning,
+    copy,
+    diagnose,
+    checkUpdates,
+  } = useBridgeActions(onState)
 
   const openPortsSettings = () => {
     setAdvanced(true)
@@ -183,7 +194,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
               }}
               className="btn-secondary flex items-center gap-1.5 text-xs"
             >
-              <Search size={14} />
+              <BusyIcon busy={busy} icon={Search} size={14} />
               {busy ? 'Ищем…' : state.settings.enabled ? 'Найти снова' : 'Включить и найти'}
             </button>
           </div>
@@ -215,7 +226,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                   className="flex h-8 items-center gap-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 text-xs font-medium text-amber-50 transition-colors hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
                   onClick={() => void markHome()}
                 >
-                  <Home size={14} />
+                  <BusyIcon busy={markingHome} icon={Home} size={14} />
                   {markingHome ? 'Сохраняю…' : `Считать «${state.wifiSsid}» домашней`}
                 </button>
               ) : undefined
@@ -250,8 +261,8 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                   className="flex h-8 items-center gap-1 rounded-lg border border-red-400/30 bg-red-500/10 px-2.5 text-xs font-medium text-red-50 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
                   onClick={() => void findPhone()}
                 >
-                  <RefreshCw size={14} />
-                  Повторить
+                  <BusyIcon busy={busy} icon={RefreshCw} size={14} />
+                  {busy ? 'Ищем…' : 'Повторить'}
                 </button>
               </>
             }
@@ -261,14 +272,25 @@ export function Settings({ state, onState, onShowWizard }: Props) {
         )}
 
         {state.peers.length > 0 && (
-          <Card title="Телефоны в сети">
+          <Card
+            title="Телефоны в сети"
+            action={
+              <button
+                type="button"
+                disabled={scanning || busy || selecting}
+                onClick={() => void scanPeers()}
+                className="flex h-7 items-center gap-1 rounded-md border border-zinc-700 px-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+              >
+                <BusyIcon busy={scanning} icon={RefreshCw} size={13} />
+                {scanning ? 'Сканируем…' : 'Обновить'}
+              </button>
+            }
+          >
             <PeerList
               peers={state.peers}
               selectedIp={state.phoneIp}
               busy={busy || selecting}
               familiarIps={familiarIps(state)}
-              onRefresh={() => void scanPeers()}
-              refreshing={scanning}
               onSelect={selectPeer}
               showHeader={false}
             />
@@ -334,15 +356,15 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           action={
             <button
               type="button"
-              disabled={busy}
+              disabled={diagnosing || busy}
               onClick={() => {
                 setDiagHidden(false)
                 void diagnose()
               }}
               className="flex h-7 items-center gap-1 rounded-md border border-zinc-700 px-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
             >
-              <Gauge size={13} />
-              {busy ? '…' : 'Запустить'}
+              <BusyIcon busy={diagnosing} icon={Gauge} size={13} />
+              {diagnosing ? 'Проверяю…' : 'Запустить'}
             </button>
           }
         >
@@ -437,8 +459,8 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                     className="inline-flex items-center gap-1 text-xs text-sky-400 transition-colors hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
                     onClick={() => void markHome()}
                   >
-                    <Home size={12} />
-                    сделать домашней
+                    <BusyIcon busy={markingHome} icon={Home} size={12} />
+                    {markingHome ? 'Сохраняю…' : 'сделать домашней'}
                   </button>
                 )}
               </div>
@@ -483,11 +505,12 @@ export function Settings({ state, onState, onShowWizard }: Props) {
               <span className="text-xs text-zinc-400">{state.update.message}</span>
               <button
                 type="button"
-                className="flex items-center gap-1 text-xs text-sky-400 transition-colors hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                disabled={checkingUpdates}
+                className="flex items-center gap-1 text-xs text-sky-400 transition-colors hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
                 onClick={() => void checkUpdates()}
               >
-                <Sparkles size={12} />
-                Проверить
+                <BusyIcon busy={checkingUpdates} icon={Sparkles} size={12} />
+                {checkingUpdates ? 'Проверяю…' : 'Проверить'}
               </button>
             </div>
           </div>

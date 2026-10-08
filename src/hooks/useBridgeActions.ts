@@ -4,6 +4,8 @@ import type { BridgeState } from '../../electron/types'
 
 export function useBridgeActions(onState: (s: BridgeState) => void) {
   const [busy, setBusy] = useState(false)
+  const [diagnosing, setDiagnosing] = useState(false)
+  const [checkingUpdates, setCheckingUpdates] = useState(false)
   const [copied, setCopied] = useState<CopyPreset | null>(null)
 
   const findPhone = useCallback(async () => {
@@ -34,21 +36,37 @@ export function useBridgeActions(onState: (s: BridgeState) => void) {
   }, [])
 
   const diagnose = useCallback(async () => {
-    setBusy(true)
+    setDiagnosing(true)
     try {
       const state = await window.happBridge.diagnose()
       onState(state)
       return state
     } finally {
-      setBusy(false)
+      setDiagnosing(false)
     }
   }, [onState])
 
   const checkUpdates = useCallback(async () => {
-    const state = await window.happBridge.checkUpdates()
-    onState(state)
-    return state
+    setCheckingUpdates(true)
+    try {
+      const state = await window.happBridge.checkUpdates()
+      onState(state)
+      return state
+    } finally {
+      setCheckingUpdates(false)
+    }
   }, [onState])
 
-  return { busy, copied, findPhone, scanPeers, scanning, copy, diagnose, checkUpdates }
+  return {
+    busy,
+    diagnosing,
+    checkingUpdates,
+    copied,
+    findPhone,
+    scanPeers,
+    scanning,
+    copy,
+    diagnose,
+    checkUpdates,
+  }
 }
