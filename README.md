@@ -30,7 +30,7 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 - macOS (Apple Silicon) + телефон с Happ и включённым **«Разрешить LAN подключение»**
 - кто устал обновлять прокси в Telegram / Cursor / IDE после смены Wi‑Fi
 
-### Возможности (1.1.8)
+### Возможности (1.1.9)
 
 - автопоиск Happ в Wi‑Fi; если телефонов несколько - список и выбор вручную
 - устойчивый поиск после перезагрузки Mac (ожидание Wi‑Fi, мягкий backoff, подсказка Local Network в диагностике)
@@ -56,7 +56,7 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 
 #### Готовый .dmg
 
-1. Скачайте `.dmg` с [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases) (файл вида `Happ Bridge-1.1.8-arm64.dmg`).
+1. Скачайте `.dmg` с [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases) (файл вида `Happ Bridge-1.1.9-arm64.dmg`).
 2. Откройте диск и дважды нажмите **Install Happ Bridge.command** → «Установить».
 3. Если macOS блокирует **установщик**, в Терминале:
 
@@ -84,7 +84,7 @@ npm test
 npm run dist
 ```
 
-Готовый файл: `release/Happ Bridge-1.1.8-arm64.dmg`
+Готовый файл: `release/Happ Bridge-1.1.9-arm64.dmg`
 
 Разработка: `npm run dev`
 
@@ -138,7 +138,7 @@ Electron · Vite · React · TypeScript · Tailwind
 
 Stable localhost proxy bridge to a phone running Happ on your LAN. Stop editing proxy IPs in Telegram, Cursor, Firefox, and WebStorm every time DHCP moves your phone.
 
-**Version 1.1.8** - macOS-upgrade hardening: cold-boot discovery, inject finds installed apps, Local Network diagnostics hint.
+**Version 1.1.9** - update download progress; 1.1.8 macOS hardening (cold-boot discovery, inject TCC, simpler connection UI).
 
 **Version 1.1.6** - bridge on/off, SOCKS port fix to Happ, Keychain LAN password, peer-per-SSID, Gatekeeper-friendly DMG.
 
