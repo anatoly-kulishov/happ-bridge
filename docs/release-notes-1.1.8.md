@@ -1,6 +1,6 @@
 ## Happ Bridge 1.1.8
 
-macOS-upgrade hardening: faster phone find after reboot, and SOCKS inject that sees installed apps even before their config folders exist.
+macOS-upgrade hardening, clearer errors, and a simpler connection UI.
 
 ### Install
 1. Download **Happ Bridge-1.1.8-arm64.dmg**
@@ -18,14 +18,21 @@ xattr -cr "/Applications/Happ Bridge.app" && open "/Applications/Happ Bridge.app
 ```
 
 ### After a macOS update — checklist
-1. **Local Network:** Системные настройки → Конфиденциальность и безопасность → Локальная сеть → включите **Happ Bridge** (после крупного обновления macOS доступ часто сбрасывается).
-2. **Full Disk Access (Firefox inject):** Firefox `profiles.ini` can be blocked (`EPERM`). Without access, older builds crashed status and showed **all** apps as «не найдено». Grant **Полный доступ к диску** to Happ Bridge (or Electron while developing), then restart.
-3. **Location (optional):** разрешите геолокацию для Happ Bridge, если нужен SSID (домашние сети / быстрый peer по Wi‑Fi).
-4. **Inject apps:** один раз откройте Cursor / WebStorm / Firefox, если прописка SOCKS жалуется на отсутствие профиля (Firefox) — конфиги Cursor/WebStorm Bridge может создать сам, если `.app` уже в `/Applications`.
+1. **Local Network:** Системные настройки → Конфиденциальность и безопасность → Локальная сеть → включите **Happ Bridge**.
+2. **Full Disk Access (Firefox inject):** Полный доступ к диску → Happ Bridge, затем перезапуск.
+3. **Location (optional):** для SSID / домашних сетей.
+4. Quit any old menu-bar copy before opening the new build (port 10808/10809 conflict).
 
 ### What's new
-- **Cold-boot discovery** — wait for a local IPv4 before the first scan; longer probe timeout after startup / wake; softer retry backoff while Wi‑Fi is up
-- **IPv4 family** — accept both `'IPv4'` and numeric `4` from `os.networkInterfaces()`
-- **Wi‑Fi SSID** — resolve real Wi‑Fi devices via `networksetup -listallhardwareports`; `NSLocationWhenInUseUsageDescription` for Sequoia+
-- **Inject «не найдено»** — apps count as available when the `.app` is installed, not only when Application Support config already exists; Cursor/WebStorm configs created on «Прописать»
-- **Diagnostics** — Local Network TCC hint when LAN IP is present but the phone does not answer
+- **Cold-boot discovery** — wait for local IPv4; longer wake/startup probes; softer backoff while LAN is up
+- **IPv4 family** — accept `'IPv4'` and numeric `4`
+- **Wi‑Fi SSID** — real Wi‑Fi devices via `networksetup`; Location usage string
+- **Inject** — `.app` counts as available; Cursor/WebStorm configs created on «Прописать»; Firefox TCC no longer blanks the whole list
+- **Connection UI** — bridge toggle only; ↻ for rescan; click peer to switch, active peer to disconnect
+- **Alerts** — structured banners with the right actions (ports / LAN password / guidance), not a blind «Повторить»
+- **Loading** — spinners instead of bare «…»
+
+### Fixed
+- Phones hard to find right after Mac reboot / lid open
+- All inject apps shown as «не найдено» when Firefox `profiles.ini` is blocked (`EPERM`)
+- Misleading «Не удалось подключиться» for auth, peer-pick, and home-network hold-off

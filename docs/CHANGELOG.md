@@ -9,9 +9,12 @@
 - Inject «не найдено»: Cursor / WebStorm / Firefox are available when the `.app` is installed even if Application Support config is missing; Cursor and WebStorm configs are created on «Прописать»
 - Inject status no longer blanks **all** apps when Firefox `profiles.ini` is blocked by TCC (`EPERM`) — Cursor/WebStorm stay selectable; Firefox shows «нет доступа» + Full Disk Access hint
 - Diagnostics: Local Network permission hint when Wi‑Fi IP exists but Happ does not answer (common after macOS upgrades)
+- Error banner no longer frames auth / peer-pick / home-network hold-off as «Не удалось подключиться» with a blind rescan
+- Connection UI: overloaded find button removed; peer click switches or disconnects; ↻ rescans
 
 ### Added
 - `NSLocationWhenInUseUsageDescription` for SSID reads on modern macOS
+- Structured `AlertBanner` tones/actions; loading spinners on primary busy controls
 - Release notes / upgrade checklist in `docs/release-notes-1.1.8.md`
 
 ## 1.1.7 - 2026-09-30
