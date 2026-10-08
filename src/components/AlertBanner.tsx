@@ -73,44 +73,113 @@ export function AlertBanner({
   )
 }
 
-export type BridgeErrorKind = 'port-in-use' | 'permission' | 'generic'
+export type BridgeErrorKind =
+  | 'port-in-use'
+  | 'permission'
+  | 'auth'
+  | 'validation'
+  | 'guidance'
+  | 'generic'
 
 export type ParsedBridgeError = {
   kind: BridgeErrorKind
   title: string
   body: string
+  /** Suggested banner tone for this classification. */
+  tone: AlertTone
   port?: string
 }
 
 /** Split backend Russian error strings into title / body / actionable kind. */
 export function parseBridgeError(error: string): ParsedBridgeError {
-  const portBusy = /Порт\s+(\d+|прокси)\s+уже занят/i.exec(error)
+  const trimmed = error.trim()
+  if (!trimmed) {
+    return {
+      kind: 'generic',
+      title: 'Сообщение об ошибке пусто',
+      body: '',
+      tone: 'warning',
+    }
+  }
+
+  const portBusy = /Порт\s+(\d+|прокси)\s+уже занят/i.exec(trimmed)
   if (portBusy) {
     const port = portBusy[1] === 'прокси' ? undefined : portBusy[1]
     return {
       kind: 'port-in-use',
       title: port ? `Порт ${port} занят` : 'Порт прокси занят',
       body: 'Скорее всего запущена другая копия Happ Bridge (иконка в строке меню или старая сборка). Закройте её через меню → Выход, либо смените порты ниже.',
+      tone: 'danger',
       port,
     }
   }
-  if (/Полный доступ к диску|нет доступа/i.test(error)) {
+
+  if (/Полный доступ к диску|нет доступа/i.test(trimmed)) {
     return {
       kind: 'permission',
       title: 'Нет доступа к файлам',
-      body: error,
+      body: trimmed,
+      tone: 'warning',
     }
   }
-  if (/Локальная сеть|Local Network/i.test(error)) {
+  if (/Локальная сеть|Local Network/i.test(trimmed)) {
     return {
       kind: 'permission',
       title: 'Нет доступа к локальной сети',
-      body: error,
+      body: trimmed,
+      tone: 'warning',
     }
   }
+
+  if (/логин\/пароль LAN|пароль LAN/i.test(trimmed) && /Happ/i.test(trimmed)) {
+    return {
+      kind: 'auth',
+      title: 'Нужен пароль Happ LAN',
+      body: trimmed,
+      tone: 'warning',
+    }
+  }
+
+  if (/^Некорректный IP$/i.test(trimmed)) {
+    return {
+      kind: 'validation',
+      title: 'Некорректный IP',
+      body: 'Проверьте адрес телефона в расширенных настройках.',
+      tone: 'warning',
+    }
+  }
+
+  if (/SSID не определён/i.test(trimmed)) {
+    return {
+      kind: 'validation',
+      title: 'Wi‑Fi не определён',
+      body: trimmed,
+      tone: 'warning',
+    }
+  }
+
+  if (/не отмечена как домашняя|автоподключение отключено/i.test(trimmed)) {
+    return {
+      kind: 'guidance',
+      title: 'Автоподключение отключено',
+      body: trimmed,
+      tone: 'warning',
+    }
+  }
+
+  if (/Найдено\s+\d+\s+прокси/i.test(trimmed) || /Выберите телефон в списке/i.test(trimmed)) {
+    return {
+      kind: 'guidance',
+      title: 'Выберите телефон',
+      body: trimmed,
+      tone: 'warning',
+    }
+  }
+
   return {
     kind: 'generic',
     title: 'Не удалось подключиться',
-    body: error,
+    body: trimmed,
+    tone: 'danger',
   }
 }

@@ -209,6 +209,21 @@ async function main() {
   )
   assert.equal(parseBridgeError('Порт 10809 уже занят').title, 'Порт 10809 занят')
   assert.equal(parseBridgeError('что-то сломалось').kind, 'generic')
+  assert.equal(
+    parseBridgeError('Happ требует логин/пароль LAN — укажите их в настройках Bridge.').kind,
+    'auth',
+  )
+  assert.notEqual(
+    parseBridgeError('Найдено 3 прокси. Выберите телефон в списке.').title,
+    'Не удалось подключиться',
+  )
+  assert.equal(parseBridgeError('Некорректный IP').kind, 'validation')
+  assert.equal(
+    parseBridgeError(
+      'Сеть не отмечена как домашняя и пароль LAN не задан — автоподключение отключено. Выберите телефон в списке.',
+    ).kind,
+    'guidance',
+  )
 
   assert.equal(isIpv4Family('IPv4'), true)
   assert.equal(isIpv4Family(4), true)

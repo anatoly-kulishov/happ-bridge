@@ -64,7 +64,9 @@ export function PeerList({
       )}
       {showHeader && peers.length > 1 && (
         <p className="text-xs text-zinc-500">
-          Нажмите IP, чтобы подключиться. Активный — чтобы отключить.
+          {onDisconnect
+            ? 'Нажмите IP, чтобы подключиться. Активный — чтобы отключить.'
+            : 'Нажмите IP, чтобы подключиться.'}
         </p>
       )}
 

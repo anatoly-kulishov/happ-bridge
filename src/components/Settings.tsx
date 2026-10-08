@@ -49,6 +49,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
   const [advanced, setAdvanced] = useState(false)
   const [showPresets, setShowPresets] = useState(false)
   const advancedRef = useRef<HTMLDivElement>(null)
+  const securityRef = useRef<HTMLDivElement>(null)
   const {
     busy,
     diagnosing,
@@ -66,6 +67,12 @@ export function Settings({ state, onState, onShowWizard }: Props) {
     setAdvanced(true)
     window.requestAnimationFrame(() => {
       advancedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
+  }
+
+  const openLanAuthSettings = () => {
+    window.requestAnimationFrame(() => {
+      securityRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     })
   }
   const [saving, setSaving] = useState(false)
@@ -233,7 +240,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
 
         {bridgeError && (
           <AlertBanner
-            tone="danger"
+            tone={bridgeError.tone}
             title={bridgeError.title}
             actions={
               <>
@@ -247,15 +254,36 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                     Сменить порты
                   </button>
                 )}
-                <button
-                  type="button"
-                  disabled={busy || toggling}
-                  className="flex h-8 items-center gap-1 rounded-lg border border-red-400/30 bg-red-500/10 px-2.5 text-xs font-medium text-red-50 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
-                  onClick={() => void findPhone()}
-                >
-                  <BusyIcon busy={busy} icon={RefreshCw} size={14} />
-                  {busy ? 'Ищем…' : 'Повторить'}
-                </button>
+                {bridgeError.kind === 'auth' && (
+                  <button
+                    type="button"
+                    className="flex h-8 items-center gap-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 text-xs font-medium text-amber-50 transition-colors hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                    onClick={openLanAuthSettings}
+                  >
+                    Указать пароль
+                  </button>
+                )}
+                {bridgeError.kind === 'validation' && (
+                  <button
+                    type="button"
+                    className="flex h-8 items-center gap-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 text-xs font-medium text-amber-50 transition-colors hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                    onClick={openPortsSettings}
+                  >
+                    <Wrench size={14} />
+                    Открыть настройки
+                  </button>
+                )}
+                {(bridgeError.kind === 'port-in-use' || bridgeError.kind === 'generic') && (
+                  <button
+                    type="button"
+                    disabled={busy || toggling}
+                    className="flex h-8 items-center gap-1 rounded-lg border border-red-400/30 bg-red-500/10 px-2.5 text-xs font-medium text-red-50 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+                    onClick={() => void findPhone()}
+                  >
+                    <BusyIcon busy={busy} icon={RefreshCw} size={14} />
+                    {busy ? 'Ищем…' : 'Повторить'}
+                  </button>
+                )}
               </>
             }
           >
@@ -407,7 +435,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
         </Card>
 
         <Card title="Безопасность и сеть">
-          <div className="space-y-3">
+          <div ref={securityRef} className="space-y-3">
             <Switch
               checked={openAtLogin}
               onChange={(checked) => {

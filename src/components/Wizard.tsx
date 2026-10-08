@@ -152,18 +152,20 @@ export function Wizard({ state, onDone, onState }: Props) {
               )}
               {bridgeError && (
                 <AlertBanner
-                  tone="danger"
+                  tone={bridgeError.tone}
                   title={bridgeError.title}
                   actions={
-                    <button
-                      type="button"
-                      disabled={busy}
-                      className="flex h-8 items-center gap-1 rounded-lg border border-red-400/30 bg-red-500/10 px-2.5 text-xs font-medium text-red-50 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
-                      onClick={() => void runFind()}
-                    >
-                      <BusyIcon busy={busy} icon={RefreshCw} size={14} />
-                      {busy ? 'Ищем…' : 'Повторить'}
-                    </button>
+                    (bridgeError.kind === 'port-in-use' || bridgeError.kind === 'generic') ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        className="flex h-8 items-center gap-1 rounded-lg border border-red-400/30 bg-red-500/10 px-2.5 text-xs font-medium text-red-50 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+                        onClick={() => void runFind()}
+                      >
+                        <BusyIcon busy={busy} icon={RefreshCw} size={14} />
+                        {busy ? 'Ищем…' : 'Повторить'}
+                      </button>
+                    ) : undefined
                   }
                 >
                   {bridgeError.body}
