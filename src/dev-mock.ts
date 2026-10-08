@@ -160,9 +160,9 @@ export function installDevMock() {
         ...state,
         diagnostics: [
           { id: 'wifi', ok: true, label: 'Wi‑Fi / локальная сеть', detail: 'Компьютер в сети: 192.168.0.10' },
-          { id: 'happ', ok: true, label: 'Happ на телефоне', detail: 'Happ отвечает на 192.168.0.244:10808' },
+          { id: 'happ', ok: true, label: 'Happ на телефоне', detail: 'Happ отвечает на 192.168.0.244:10808 (логин ок)' },
           { id: 'auth', ok: true, label: 'Пароль LAN', detail: 'Не задан. В Happ можно включить логин/пароль для LAN.' },
-          { id: 'relay', ok: true, label: 'Локальный мост', detail: 'Слушает 127.0.0.1:10808 и :10809' },
+          { id: 'relay', ok: true, label: 'Локальный мост', detail: 'Мост работает: сквозная проверка 127.0.0.1:10808 прошла' },
           { id: 'bridge', ok: true, label: 'Статус моста', detail: 'Подключено к 192.168.0.244' },
         ],
       }
@@ -180,8 +180,8 @@ export function installDevMock() {
         ...state,
         update: {
           status: 'downloading',
-          message: 'Найдена версия 1.1.9. Скачиваем… 0%',
-          version: '1.1.9',
+          message: 'Найдена версия 1.2.0. Скачиваем… 0%',
+          version: '1.2.0',
           progress: 0,
         },
       }
@@ -192,7 +192,7 @@ export function installDevMock() {
           ...state,
           update: {
             status: 'downloading',
-            message: `Скачиваем 1.1.9… ${progress}%`,
+            message: `Скачиваем 1.2.0… ${progress}%`,
             version: '1.1.9',
             progress,
           },
@@ -203,7 +203,7 @@ export function installDevMock() {
         ...state,
         update: {
           status: 'available',
-          message: 'Версия 1.1.9 скачана — перезапустите приложение для установки.',
+          message: 'Версия 1.2.0 скачана — перезапустите приложение для установки.',
           version: '1.1.9',
           progress: 100,
         },

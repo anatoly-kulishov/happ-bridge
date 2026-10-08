@@ -1,7 +1,10 @@
-import { localIpv4Addresses } from './discover'
-import { ProxyRelay, probeSocks5 } from './relay'
+import { discoverPhones, localIpv4Addresses } from './discover'
+import { checkProxyAuth, type ProxyAuthCheck, type ProxyRelay } from './relay'
 import type { AppSettings, DiagnosticCheck } from './types'
 import { socksAuthFromSettings } from './types'
+
+const AUTH_PROBE_MS = 1200
+const RELAY_PROBE_MS = 1500
 
 export async function runDiagnostics(opts: {
   settings: AppSettings
@@ -27,18 +30,54 @@ export async function runDiagnostics(opts: {
   const candidate =
     settings.manualIp || phoneIp || settings.lastPhoneIp || settings.recentPhoneIps[0] || null
 
-  let happOk = false
+  // Direct probe of the configured candidate: distinguishes timeout / auth-required /
+  // auth-failed / reachable, mirroring what the bridge itself experiences on connect.
+  const happResult: ProxyAuthCheck | null = candidate
+    ? await checkProxyAuth(candidate, settings.socksPort, AUTH_PROBE_MS, auth)
+    : null
+
+  // If the candidate is unreachable (not an auth problem) and the LAN is up, run a
+  // quick subnet scan to see whether the phone simply changed its IP. Worst case ~2-3s.
+  let scanHits: string[] = []
+  if (happResult === 'unreachable' && locals.length > 0) {
+    scanHits = await discoverPhones({
+      socksPort: settings.socksPort,
+      preferredIps: candidatesFromSettings(settings).filter((ip) => ip !== candidate),
+      scanSubnet: true,
+      concurrency: 64,
+      timeoutMs: 400,
+      auth,
+    })
+  }
+
+  let happOk = happResult === 'ok'
   let happDetail = 'Нечего проверять: сначала найдите телефон.'
-  if (candidate) {
-    happOk = await probeSocks5(candidate, settings.socksPort, 600, undefined, auth)
-    if (happOk) {
-      happDetail = auth
-        ? `Happ отвечает на ${candidate}:${settings.socksPort} (логин ок)`
-        : `Happ отвечает на ${candidate}:${settings.socksPort}`
+  if (happResult === 'ok') {
+    happDetail = auth
+      ? `Happ отвечает на ${candidate}:${settings.socksPort} (логин ок)`
+      : `Happ отвечает на ${candidate}:${settings.socksPort}`
+  } else if (happResult === 'auth-required') {
+    happDetail =
+      `Happ требует логин/пароль LAN на ${candidate}. Укажите их в «Безопасность и сеть» ` +
+      '(логин/пароль из Happ) - без них мост не подключится.'
+  } else if (happResult === 'auth-failed') {
+    happDetail =
+      `Happ на ${candidate} отклонил логин/пароль. Проверьте учётные данные LAN в «Безопасность и сеть».`
+  } else if (happResult === 'unreachable') {
+    const live = scanHits.filter((ip) => ip !== candidate)
+    if (live.length > 0) {
+      happOk = true
+      happDetail =
+        `Настроенный адрес ${candidate} не отвечает, но Happ найден в сети: ${live.join(', ')}. ` +
+        'Телефон, видимо, сменил IP - нажмите «Найти снова» или выберите адрес в списке.'
     } else {
-      happDetail = auth
-        ? `Нет ответа / неверный логин на ${candidate}:${settings.socksPort}. Проверьте Happ, LAN и пароль.`
-        : `Нет ответа на ${candidate}:${settings.socksPort}. Включите Happ и «Разрешить LAN».`
+      happDetail =
+        (auth
+          ? `Нет ответа / неверный логин на ${candidate}:${settings.socksPort}. Проверьте Happ, LAN и пароль.`
+          : `Нет ответа на ${candidate}:${settings.socksPort}. Включите Happ и «Разрешить LAN».`) +
+        (scanHits.length === 0
+          ? ' Happ не найден во всей подсети.'
+          : ` Других открытых SOCKS в подсети не найдено.`)
     }
   }
 
@@ -72,14 +111,36 @@ export async function runDiagnostics(opts: {
       ? `Логин «${auth.user || '(пусто)'}» задан — подмена без пароля отсекается`
       : 'Не задан. В Happ можно включить логин/пароль для LAN, затем указать их здесь.',
   })
+
   const listening = relay.isListening()
+  // End-to-end probe through the local relay: greeting is piped to the phone, so a
+  // success proves the whole chain (local port → relay → phone SOCKS → auth).
+  const relayResult: ProxyAuthCheck | null =
+    listening && Boolean(relay.targetIp)
+      ? await checkProxyAuth('127.0.0.1', settings.socksPort, RELAY_PROBE_MS, auth)
+      : null
+
+  let relayOk = false
+  let relayDetail = 'Локальный relay не запущен. Нажмите «Найти снова».'
+  if (!listening) {
+    relayDetail = 'Локальный relay не запущен. Нажмите «Найти снова».'
+  } else if (relayResult === 'ok') {
+    relayOk = true
+    relayDetail = `Мост работает: сквозная проверка 127.0.0.1:${settings.socksPort} прошла`
+  } else if (relayResult === 'auth-required') {
+    relayDetail = `Порт ${settings.socksPort} слушает, но телефон требует логин/пароль LAN (см. проверку «Пароль LAN»).`
+  } else if (relayResult === 'auth-failed') {
+    relayDetail = `Порт ${settings.socksPort} слушает, но телефон отклонил логин/пароль LAN.`
+  } else {
+    relayDetail = happOk
+      ? `Порт ${settings.socksPort} слушает, но цепочка до телефона оборвана. Нажмите «Найти снова», чтобы переподключить мост.`
+      : `Порт ${settings.socksPort} слушает, но телефон не подключён. Сначала найдите телефон.`
+  }
   checks.push({
     id: 'relay',
-    ok: listening,
+    ok: relayOk,
     label: 'Локальный мост',
-    detail: listening
-      ? `Слушает 127.0.0.1:${settings.socksPort} и :${settings.httpPort}`
-      : 'Локальный relay не запущен. Нажмите «Найти снова».',
+    detail: relayDetail,
   })
 
   checks.push({
@@ -93,4 +154,15 @@ export async function runDiagnostics(opts: {
   })
 
   return checks
+}
+
+function candidatesFromSettings(settings: AppSettings): string[] {
+  const ips: string[] = []
+  const push = (ip: string | null | undefined) => {
+    if (ip && !ips.includes(ip)) ips.push(ip)
+  }
+  push(settings.manualIp)
+  push(settings.lastPhoneIp)
+  for (const ip of settings.recentPhoneIps) push(ip)
+  return ips
 }

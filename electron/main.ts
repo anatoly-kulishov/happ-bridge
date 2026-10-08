@@ -253,9 +253,20 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
   ipcMain.handle('bridge:copyDiagnostics', () => {
     const s = session!.getState()
     if (!s.diagnostics || s.diagnostics.length === 0) return ''
-    const text = s.diagnostics
-      .map((d) => `${d.ok ? 'OK' : 'ERR'} ${d.label}\n  ${d.detail}`)
-      .join('\n')
+    const lines: string[] = [`Happ Bridge ${app.getVersion()}`, new Date().toISOString()]
+    const head: string[] = [`Статус: ${s.status}${s.phoneIp ? ` · ${s.phoneIp}` : ''}`]
+    if (s.wifiSsid) {
+      head.push(`SSID: ${s.wifiSsid}${s.isHomeNetwork ? ' (домашняя)' : ' (чужая)'}`)
+    }
+    head.push(`мост: ${s.socksLocal} / ${s.httpLocal}`)
+    if (s.peers.length > 0) head.push(`найдено телефонов: ${s.peers.length}`)
+    if (s.paused) head.push('bridged отключён пользователем')
+    if (s.error) head.push(`ошибка: ${s.error}`)
+    lines.push(head.join(' · '), '')
+    for (const d of s.diagnostics) {
+      lines.push(`${d.ok ? 'OK' : 'ERR'} ${d.label}\n  ${d.detail}`)
+    }
+    const text = lines.join('\n')
     clipboard.writeText(text)
     return text
   })

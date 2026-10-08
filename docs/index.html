@@ -6,13 +6,13 @@
     <title>Happ Bridge - стабильный прокси к Happ на телефоне для macOS</title>
     <meta
       name="description"
-      content="Happ Bridge 1.1.9 - menu bar для macOS. SOCKS5/HTTP 127.0.0.1 для Telegram, Cursor, Firefox и WebStorm через Happ на iPhone."
+      content="Happ Bridge 1.2.0 - menu bar для macOS. SOCKS5/HTTP 127.0.0.1 для Telegram, Cursor, Firefox и WebStorm через Happ на iPhone."
     />
     <meta name="robots" content="index,follow" />
     <meta name="theme-color" content="#090b10" />
     <link rel="canonical" href="https://anatoly-kulishov.github.io/happ-bridge/" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Happ Bridge 1.1.9 - стабильный прокси к Happ на macOS" />
+    <meta property="og:title" content="Happ Bridge 1.2.0 - стабильный прокси к Happ на macOS" />
     <meta
       property="og:description"
       content="Один раз настройте 127.0.0.1:10808 / 10809. Happ Bridge сам находит телефон в Wi-Fi."
@@ -841,7 +841,7 @@
           </p>
           <div class="actions">
             <a class="btn btn-primary" href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest"
-              >Скачать .dmg 1.1.9</a
+              >Скачать .dmg 1.2.0</a
             >
             <a class="btn btn-ghost" href="#install">Как установить</a>
           </div>
@@ -1036,19 +1036,23 @@
         </p>
         <div class="install-grid install-3">
           <div class="panel reveal">
-            <h3>1. Установить</h3>
+            <h3>1. Открыть диск и установить</h3>
             <ol>
               <li>Скачайте <code>.dmg</code> с GitHub Releases</li>
-              <li>Откройте диск и запустите <strong>Install Happ Bridge.command</strong></li>
-              <li>Нажмите «Установить»</li>
+              <li>
+                <strong>Откройте диск</strong>: двойной клик по скачанному файлу. На рабочем столе
+                появится диск <strong>Happ Bridge</strong>
+              </li>
+              <li>Запустите <strong>Install Happ Bridge.command</strong> → «Установить»</li>
             </ol>
             <p class="install-note">
-              Если сам установщик не открывается - сначала скрипт из блока 2.
+              Если установщик не открывается - сначала блок 2. После установки, если приложение
+              заблокировано - блок 3.
             </p>
           </div>
           <div class="panel reveal reveal-d1">
             <h3>2. Если блокирует установщик</h3>
-            <p>Вставьте в «Терминал» и нажмите Return:</p>
+            <p>Вставьте в «Терминал» и нажмите Return (сначала должен быть открыт диск из шага 1):</p>
             <div class="code-block">
               <div class="code-block-head">
                 <span>Terminal</span>
@@ -1061,14 +1065,19 @@
                   Скопировать
                 </button>
               </div>
-              <pre id="cmd-installer"><code>xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command" && open "/Volumes/Happ Bridge/Install Happ Bridge.command"</code></pre>
+              <pre id="cmd-installer"><code>if [ ! -d "/Volumes/Happ Bridge" ]; then
+  echo "Диск «Happ Bridge» не открыт. Сделайте двойной клик по файлу .dmg в Загрузках, дождитесь диска и повторите."
+  exit 1
+fi
+xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command"
+open "/Volumes/Happ Bridge/Install Happ Bridge.command"</code></pre>
             </div>
           </div>
           <div class="panel reveal reveal-d2">
             <h3>3. Запустить приложение</h3>
             <p>
-              После установки, если macOS не даёт открыть Happ Bridge - этот скрипт снимает
-              quarantine и запускает:
+              Выполняйте только если Happ Bridge <strong>уже установлен</strong> в «Программах». Код
+              снимает блокировку Gatekeeper и запускает:
             </p>
             <div class="code-block">
               <div class="code-block-head">
@@ -1082,7 +1091,12 @@
                   Скопировать
                 </button>
               </div>
-              <pre id="cmd-launch"><code>xattr -cr "/Applications/Happ Bridge.app" && open "/Applications/Happ Bridge.app"</code></pre>
+              <pre id="cmd-launch"><code>if [ ! -d "/Applications/Happ Bridge.app" ]; then
+  echo "Приложение не установлено. Сначала выполните блок «Установить» (Install Happ Bridge.command)."
+  exit 1
+fi
+xattr -cr "/Applications/Happ Bridge.app"
+open "/Applications/Happ Bridge.app"</code></pre>
             </div>
             <p class="install-note">
               Иконка появится в строке меню (справа вверху), не в Dock.
@@ -1092,7 +1106,7 @@
       </section>
 
       <section class="en reveal" lang="en">
-        <h2>Happ Bridge 1.1.9 for macOS</h2>
+        <h2>Happ Bridge 1.2.0 for macOS</h2>
         <p>
           Menu bar utility: stable SOCKS5/HTTP localhost bridge to Happ. Hardened for modern macOS
           (Local Network, cold-boot discovery, update download progress).
@@ -1101,7 +1115,7 @@
       </section>
 
       <footer>
-        <span>Open source · MIT · v1.1.9</span>
+        <span>Open source · MIT · v1.2.0</span>
         <a href="https://github.com/anatoly-kulishov/happ-bridge">GitHub</a>
         <a href="https://github.com/anatoly-kulishov/happ-bridge/blob/main/CHANGELOG.md">Changelog</a>
         <span>Not affiliated with Happ / Happ.su</span>
