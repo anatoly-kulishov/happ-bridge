@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
+import { parseBridgeError } from '../src/components/AlertBanner'
 import {
   webstormConfigDirFromVersion,
 } from '../electron/appPaths'
@@ -199,6 +200,15 @@ async function main() {
     '10.0.0.2',
   )
   assert.equal(pickPreferredPhone(['10.0.0.2'], null, []), null)
+
+  assert.equal(
+    parseBridgeError(
+      'Порт 10809 уже занят — похоже, запущена другая копия Happ Bridge. Закройте её или смените порт в настройках.',
+    ).kind,
+    'port-in-use',
+  )
+  assert.equal(parseBridgeError('Порт 10809 уже занят').title, 'Порт 10809 занят')
+  assert.equal(parseBridgeError('что-то сломалось').kind, 'generic')
 
   assert.equal(isIpv4Family('IPv4'), true)
   assert.equal(isIpv4Family(4), true)

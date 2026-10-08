@@ -6,16 +6,18 @@ import {
   Save,
   Gauge,
   Home,
+  RefreshCw,
   Search,
   Plug,
   ShieldAlert,
   Sparkles,
   Wrench,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { BridgeState, DiagnosticCheck } from '../../electron/types'
 import { DEFAULT_SETTINGS } from '../../electron/types'
 import { useBridgeActions } from '../hooks/useBridgeActions'
+import { AlertBanner, parseBridgeError } from './AlertBanner'
 import { Card } from './Card'
 import { InjectAppsPanel } from './InjectAppsPanel'
 import { PeerList } from './PeerList'
@@ -45,8 +47,16 @@ export function Settings({ state, onState, onShowWizard }: Props) {
   const [saved, setSaved] = useState(false)
   const [advanced, setAdvanced] = useState(false)
   const [showPresets, setShowPresets] = useState(false)
+  const advancedRef = useRef<HTMLDivElement>(null)
   const { busy, copied, findPhone, scanPeers, scanning, copy, diagnose, checkUpdates } =
     useBridgeActions(onState)
+
+  const openPortsSettings = () => {
+    setAdvanced(true)
+    window.requestAnimationFrame(() => {
+      advancedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
+  }
   const [saving, setSaving] = useState(false)
   const [selecting, setSelecting] = useState(false)
   const [markingHome, setMarkingHome] = useState(false)
@@ -56,6 +66,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
 
   const bridgeActive = state.settings.enabled && state.status !== 'disconnected'
   const connected = state.status === 'connected'
+  const bridgeError = state.error ? parseBridgeError(state.error) : null
 
   const dirty =
     manualIp.trim() !== (state.settings.manualIp ?? '') ||
@@ -191,37 +202,61 @@ export function Settings({ state, onState, onShowWizard }: Props) {
         </Card>
 
         {state.publicWifiNoAuth && (
-          <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 p-3 text-sm text-amber-50">
-            <div className="flex items-start gap-2">
-              <ShieldAlert size={18} className="mt-0.5 shrink-0 text-amber-300" />
-              <div>
-                <p className="font-medium tracking-tight">Чужая сеть без пароля LAN</p>
-                <p className="mt-1 text-xs leading-relaxed text-amber-100/75">
-                  {state.wifiSsid
-                    ? `«${state.wifiSsid}» не в домашних сетях, логин/пароль Happ не заданы.`
-                    : 'Логин/пароль Happ не заданы.'}{' '}
-                  В общественном Wi‑Fi сосед может сесть на ваш SOCKS.
-                </p>
-                {state.wifiSsid && !state.isHomeNetwork && (
-                  <button
-                    type="button"
-                    disabled={markingHome}
-                    className="mt-2.5 flex h-8 items-center gap-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 text-xs font-medium text-amber-50 transition-colors hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
-                    onClick={() => void markHome()}
-                  >
-                    <Home size={14} />
-                    {markingHome ? 'Сохраняю…' : `Считать «${state.wifiSsid}» домашней`}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
+          <AlertBanner
+            tone="warning"
+            icon={ShieldAlert}
+            title="Чужая сеть без пароля LAN"
+            actions={
+              state.wifiSsid && !state.isHomeNetwork ? (
+                <button
+                  type="button"
+                  disabled={markingHome}
+                  className="flex h-8 items-center gap-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 text-xs font-medium text-amber-50 transition-colors hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+                  onClick={() => void markHome()}
+                >
+                  <Home size={14} />
+                  {markingHome ? 'Сохраняю…' : `Считать «${state.wifiSsid}» домашней`}
+                </button>
+              ) : undefined
+            }
+          >
+            {state.wifiSsid
+              ? `«${state.wifiSsid}» не в домашних сетях, логин/пароль Happ не заданы.`
+              : 'Логин/пароль Happ не заданы.'}{' '}
+            В общественном Wi‑Fi сосед может сесть на ваш SOCKS.
+          </AlertBanner>
         )}
 
-        {state.error && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
-            {state.error}
-          </div>
+        {bridgeError && (
+          <AlertBanner
+            tone="danger"
+            title={bridgeError.title}
+            actions={
+              <>
+                {bridgeError.kind === 'port-in-use' && (
+                  <button
+                    type="button"
+                    className="flex h-8 items-center gap-1 rounded-lg border border-red-400/30 bg-red-500/10 px-2.5 text-xs font-medium text-red-50 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                    onClick={openPortsSettings}
+                  >
+                    <Wrench size={14} />
+                    Сменить порты
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={busy || toggling}
+                  className="flex h-8 items-center gap-1 rounded-lg border border-red-400/30 bg-red-500/10 px-2.5 text-xs font-medium text-red-50 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+                  onClick={() => void findPhone()}
+                >
+                  <RefreshCw size={14} />
+                  Повторить
+                </button>
+              </>
+            }
+          >
+            {bridgeError.body}
+          </AlertBanner>
         )}
 
         {state.peers.length > 0 && (
@@ -408,37 +443,40 @@ export function Settings({ state, onState, onShowWizard }: Props) {
               </div>
             )}
 
-            <button
-              type="button"
-              className="flex w-full items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-left transition-colors hover:border-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
-              onClick={() => setAdvanced((v) => !v)}
-              aria-expanded={advanced}
-            >
-              <span className="flex items-center gap-1.5 text-sm text-zinc-300">
-                <Wrench size={14} />
-                Расширенные настройки
-              </span>
-              {advanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            </button>
+            <div ref={advancedRef}>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-left transition-colors hover:border-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                onClick={() => setAdvanced((v) => !v)}
+                aria-expanded={advanced}
+              >
+                <span className="flex items-center gap-1.5 text-sm text-zinc-300">
+                  <Wrench size={14} />
+                  Расширенные настройки
+                </span>
+                {advanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
 
-            {advanced && (
-              <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
-                <Field
-                  label="IP телефона вручную"
-                  hint="Если автопоиск не справляется"
-                  value={manualIp}
-                  onChange={setManualIp}
-                  placeholder="192.168.1.6"
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <Field label="Порт SOCKS5" value={socksPort} onChange={setSocksPort} />
-                  <Field label="Порт HTTP" value={httpPort} onChange={setHttpPort} />
+              {advanced && (
+                <div className="mt-2 space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                  <Field
+                    label="IP телефона вручную"
+                    hint="Если автопоиск не справляется"
+                    value={manualIp}
+                    onChange={setManualIp}
+                    placeholder="192.168.1.6"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="Порт SOCKS5" value={socksPort} onChange={setSocksPort} />
+                    <Field label="Порт HTTP" value={httpPort} onChange={setHttpPort} />
+                  </div>
+                  <p className="text-xs leading-relaxed text-zinc-600">
+                    После смены портов обновите адрес в приложениях (Telegram, Cursor, Firefox…) и
+                    нажмите «Сохранить».
+                  </p>
                 </div>
-                <p className="text-xs leading-relaxed text-zinc-600">
-                  После смены портов обновите адрес в приложениях (Telegram, Cursor, Firefox…).
-                </p>
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2">
               <span className="text-xs text-zinc-400">{state.update.message}</span>
