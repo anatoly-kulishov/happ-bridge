@@ -34,6 +34,7 @@ import {
   webstormProxyPathsFromBundles,
 } from '../electron/inject'
 import { ProxyRelay, probePort, probeSocks5 } from '../electron/relay'
+import { happCheckFromResult, relayCheckFromResult } from '../electron/diagnostics'
 import { httpProxyUrl, presetText } from '../electron/presets'
 import {
   normalizeSettings,
@@ -50,7 +51,91 @@ import {
 import { freePorts } from './adversarial/_ports'
 
 async function main() {
-  assert.equal(normalizeSettings({ socksPort: 99999 }).socksPort, 10808)
+  // --- Diagnostic mappers ---
+  // auth-required → fail + mentions LAN password
+  {
+    const r = happCheckFromResult('auth-required', '192.168.1.5', 10808, { user: 'u', pass: 'p' }, [])
+    assert.equal(r.status, 'fail')
+    assert.match(r.detail, /логин\/пароль LAN/)
+  }
+  // auth-failed → fail
+  {
+    const r = happCheckFromResult('auth-failed', '192.168.1.5', 10808, { user: 'u', pass: 'bad' }, [])
+    assert.equal(r.status, 'fail')
+    assert.match(r.detail, /отклонил/)
+  }
+  // unreachable + scan hits → ok (phone found at new IP)
+  {
+    const r = happCheckFromResult('unreachable', '192.168.1.5', 10808, null, ['192.168.1.99'])
+    assert.equal(r.status, 'ok')
+    assert.match(r.detail, /192\.168\.1\.99/)
+    assert.match(r.detail, /сменил IP/)
+  }
+  // unreachable + no scan hits → fail with subnet note
+  {
+    const r = happCheckFromResult('unreachable', '192.168.1.5', 10808, null, [])
+    assert.equal(r.status, 'fail')
+    assert.match(r.detail, /подсети/)
+  }
+  // unreachable + auth set + no scan → fail with auth hint
+  {
+    const r = happCheckFromResult('unreachable', '192.168.1.5', 10808, { user: 'u', pass: 'p' }, [])
+    assert.equal(r.status, 'fail')
+    assert.match(r.detail, /пароль/)
+  }
+  // ok → ok with correct detail
+  {
+    const r = happCheckFromResult('ok', '192.168.1.5', 10808, { user: 'u', pass: 'p' }, [])
+    assert.equal(r.status, 'ok')
+    assert.match(r.detail, /логин ок/)
+  }
+  {
+    const r = happCheckFromResult('ok', '192.168.1.5', 10808, null, [])
+    assert.equal(r.status, 'ok')
+    assert.equal(r.detail.includes('логин'), false)
+  }
+  // no candidate → fail
+  {
+    const r = happCheckFromResult(null, null, 10808, null, [])
+    assert.equal(r.status, 'fail')
+    assert.match(r.detail, /Нечего проверять/)
+  }
+
+  // relay: listening + e2e ok → ok
+  {
+    const r = relayCheckFromResult('ok', 10808, true, true)
+    assert.equal(r.status, 'ok')
+    assert.match(r.detail, /сквозная проверка/)
+  }
+  // listening + auth-required → warn
+  {
+    const r = relayCheckFromResult('auth-required', 10808, true, true)
+    assert.equal(r.status, 'warn')
+  }
+  // listening + auth-failed → fail
+  {
+    const r = relayCheckFromResult('auth-failed', 10808, true, true)
+    assert.equal(r.status, 'fail')
+  }
+  // listening + unreachable + happ ok → warn (chain broken)
+  {
+    const r = relayCheckFromResult('unreachable', 10808, true, true)
+    assert.equal(r.status, 'warn')
+    assert.match(r.detail, /цепочка/)
+  }
+  // listening + unreachable + happ fail → fail
+  {
+    const r = relayCheckFromResult('unreachable', 10808, false, true)
+    assert.equal(r.status, 'fail')
+  }
+  // not listening → fail
+  {
+    const r = relayCheckFromResult(null, 10808, true, false)
+    assert.equal(r.status, 'fail')
+    assert.match(r.detail, /не запущен/)
+  }
+
+  // --- settings normalization ---
   assert.equal(normalizeSettings({ socksPort: true as unknown as number }).socksPort, 10808)
   assert.equal(
     normalizeSettings({ lastPhoneIp: 'nope', manualIp: '1.2.3' }).lastPhoneIp,

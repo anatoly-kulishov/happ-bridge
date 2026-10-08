@@ -659,21 +659,16 @@ function familiarIps(state: BridgeState): string[] {
 }
 
 function DiagnosticsList({ items }: { items: DiagnosticCheck[] }) {
+  const statusColor = (status: DiagnosticCheck['status']) =>
+    status === 'ok' ? 'text-emerald-300' : status === 'warn' ? 'text-amber-300' : 'text-red-300'
+  const dotColor = (status: DiagnosticCheck['status']) =>
+    status === 'ok' ? 'bg-emerald-400' : status === 'warn' ? 'bg-amber-400' : 'bg-red-400'
   return (
     <ul className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
       {items.map((item) => (
         <li key={item.id} className="text-sm">
-          <p
-            className={`flex items-center gap-2 font-medium ${
-              item.ok ? 'text-emerald-300' : 'text-red-300'
-            }`}
-          >
-            <span
-              className={`inline-block size-1.5 shrink-0 rounded-full ${
-                item.ok ? 'bg-emerald-400' : 'bg-red-400'
-              }`}
-              aria-hidden
-            />
+          <p className={`flex items-center gap-2 font-medium ${statusColor(item.status)}`}>
+            <span className={`inline-block size-1.5 shrink-0 rounded-full ${dotColor(item.status)}`} aria-hidden />
             {item.label}
           </p>
           <p className="mt-0.5 pl-3.5 text-xs leading-relaxed text-zinc-500">

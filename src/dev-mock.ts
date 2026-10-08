@@ -159,11 +159,12 @@ export function installDevMock() {
       state = {
         ...state,
         diagnostics: [
-          { id: 'wifi', ok: true, label: 'Wi‑Fi / локальная сеть', detail: 'Компьютер в сети: 192.168.0.10' },
-          { id: 'happ', ok: true, label: 'Happ на телефоне', detail: 'Happ отвечает на 192.168.0.244:10808 (логин ок)' },
-          { id: 'auth', ok: true, label: 'Пароль LAN', detail: 'Не задан. В Happ можно включить логин/пароль для LAN.' },
-          { id: 'relay', ok: true, label: 'Локальный мост', detail: 'Мост работает: сквозная проверка 127.0.0.1:10808 прошла' },
-          { id: 'bridge', ok: true, label: 'Статус моста', detail: 'Подключено к 192.168.0.244' },
+          { id: 'wifi', status: 'ok' as const, label: 'Wi‑Fi / локальная сеть', detail: 'Компьютер в сети: 192.168.0.10' },
+          { id: 'happ', status: 'ok' as const, label: 'Happ на телефоне', detail: 'Happ отвечает на 192.168.0.244:10808 (логин ок)' },
+          { id: 'auth', status: 'ok' as const, label: 'Пароль LAN', detail: 'Не задан. В Happ можно включить логин/пароль для LAN.' },
+          { id: 'relay', status: 'ok' as const, label: 'Локальный мост', detail: 'Мост работает: сквозная проверка 127.0.0.1:10808 прошла' },
+          { id: 'bridge', status: 'ok' as const, label: 'Статус моста', detail: 'Подключено к 192.168.0.244' },
+          { id: 'inject', status: 'ok' as const, label: 'Прописка в приложения', detail: 'прописано: Cursor, WebStorm' },
         ],
       }
       broadcast(state)

@@ -264,7 +264,8 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
     if (s.error) head.push(`ошибка: ${s.error}`)
     lines.push(head.join(' · '), '')
     for (const d of s.diagnostics) {
-      lines.push(`${d.ok ? 'OK' : 'ERR'} ${d.label}\n  ${d.detail}`)
+      const label = d.status === 'ok' ? 'OK' : d.status === 'warn' ? 'WARN' : 'ERR'
+      lines.push(`${label} ${d.label}\n  ${d.detail}`)
     }
     const text = lines.join('\n')
     clipboard.writeText(text)

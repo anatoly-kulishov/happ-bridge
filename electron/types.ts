@@ -46,9 +46,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   injectTargets: [],
 }
 
+export type DiagnosticStatus = 'ok' | 'warn' | 'fail'
+
 export type DiagnosticCheck = {
   id: string
-  ok: boolean
+  status: DiagnosticStatus
   label: string
   detail: string
 }

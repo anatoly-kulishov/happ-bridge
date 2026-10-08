@@ -27,6 +27,7 @@ import type {
 import {
   addHomeSsid,
   currentWifiSsid,
+  isHomeSsid,
   rememberSsidPeer,
   shouldWarnPublicNoAuth,
   wifiBridgeFlags,
@@ -404,6 +405,8 @@ export class BridgeSession {
       phoneIp: this.phoneIp,
       relay: this.relay,
       statusConnected: this.status === 'connected',
+      wifiSsid: this.wifiSsid,
+      isHomeNetwork: isHomeSsid(this.wifiSsid, this.settings.homeSsids),
     })
     this.hooks.onChange()
     return this.getState()
