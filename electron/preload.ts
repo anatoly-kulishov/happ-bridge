@@ -14,6 +14,8 @@ const api = {
   scanPeers: (): Promise<BridgeState> => ipcRenderer.invoke('bridge:scanPeers'),
   copyDiagnostics: (): Promise<string> =>
     ipcRenderer.invoke('bridge:copyDiagnostics'),
+  exportDebugInfo: (): Promise<string> =>
+    ipcRenderer.invoke('bridge:exportDebugInfo'),
   disconnect: (): Promise<BridgeState> => ipcRenderer.invoke('bridge:disconnect'),
   setEnabled: (enabled: boolean): Promise<BridgeState> =>
     ipcRenderer.invoke('bridge:setEnabled', enabled),

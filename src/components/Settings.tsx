@@ -642,6 +642,14 @@ function UpdateRow({
           <BusyIcon busy={busy && !downloading} icon={Sparkles} size={12} />
           {downloading ? 'Скачиваем' : busy ? 'Проверяю…' : 'Проверить'}
         </button>
+        <button
+          type="button"
+          onClick={() => void window.happBridge.exportDebugInfo()}
+          className="flex shrink-0 items-center gap-1 text-xs text-zinc-600 transition-colors hover:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+        >
+          <Copy size={11} />
+          Экспорт для поддержки
+        </button>
       </div>
     </div>
   )
