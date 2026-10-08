@@ -8,7 +8,6 @@ import {
   Home,
   Loader2,
   RefreshCw,
-  Search,
   Plug,
   ShieldAlert,
   Sparkles,
@@ -98,6 +97,21 @@ export function Settings({ state, onState, onShowWizard }: Props) {
     }
   }
 
+  const disconnectPeer = async () => {
+    setSelecting(true)
+    try {
+      onState(await window.happBridge.disconnect())
+    } finally {
+      setSelecting(false)
+    }
+  }
+
+  /** Full rediscovery when idle; soft list refresh while connected. */
+  const rescanPhones = () => {
+    if (connected) void scanPeers()
+    else void findPhone()
+  }
+
   const markHome = async () => {
     setMarkingHome(true)
     try {
@@ -184,31 +198,9 @@ export function Settings({ state, onState, onShowWizard }: Props) {
             />
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              disabled={busy || toggling}
-              onClick={() => {
-                setDiagHidden(false)
-                void findPhone()
-              }}
-              className="btn-secondary flex items-center gap-1.5 text-xs"
-            >
-              <BusyIcon busy={busy} icon={Search} size={14} />
-              {busy ? 'Ищем…' : state.settings.enabled ? 'Найти снова' : 'Включить и найти'}
-            </button>
-          </div>
-
           {!state.settings.enabled && (
             <p className="mt-3 text-xs leading-relaxed text-zinc-500">
-              Автопоиск выключен. Включите мост или выберите IP в списке ниже.
-            </p>
-          )}
-          {state.settings.enabled && state.status === 'disconnected' && state.peers.length > 0 && (
-            <p className="mt-3 text-xs leading-relaxed text-zinc-500">
-              {state.peers.length > 1
-                ? 'Найдено несколько телефонов — выберите нужный в списке.'
-                : 'Телефон найден — нажмите «выбрать» в списке.'}
+              Включите мост — поиск телефона запустится сам. Список и обновление — в блоке ниже.
             </p>
           )}
         </Card>
@@ -271,18 +263,22 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           </AlertBanner>
         )}
 
-        {state.peers.length > 0 && (
+        {(state.settings.enabled || state.peers.length > 0) && (
           <Card
             title="Телефоны в сети"
             action={
               <button
                 type="button"
-                disabled={scanning || busy || selecting}
-                onClick={() => void scanPeers()}
-                className="flex h-7 items-center gap-1 rounded-md border border-zinc-700 px-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+                disabled={!state.settings.enabled || scanning || busy || selecting || toggling}
+                onClick={() => {
+                  setDiagHidden(false)
+                  rescanPhones()
+                }}
+                title={connected ? 'Обновить список без разрыва' : 'Новый поиск'}
+                aria-label={connected ? 'Обновить список' : 'Новый поиск'}
+                className="flex size-7 items-center justify-center rounded-md border border-zinc-700 text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-40"
               >
-                <BusyIcon busy={scanning} icon={RefreshCw} size={13} />
-                {scanning ? 'Сканируем…' : 'Обновить'}
+                <BusyIcon busy={busy || scanning} icon={RefreshCw} size={14} />
               </button>
             }
           >
@@ -292,8 +288,21 @@ export function Settings({ state, onState, onShowWizard }: Props) {
               busy={busy || selecting}
               familiarIps={familiarIps(state)}
               onSelect={selectPeer}
+              onDisconnect={disconnectPeer}
               showHeader={false}
+              emptyHint={
+                busy || scanning
+                  ? 'Ищем телефоны в сети…'
+                  : state.paused
+                    ? 'Отключено. Выберите телефон в списке или нажмите обновление.'
+                    : 'Пока пусто. Нажмите ↻ для поиска.'
+              }
             />
+            {state.peers.length > 1 && state.status === 'disconnected' && (
+              <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+                Несколько телефонов — нажмите нужный IP. Активный повторно — отключить.
+              </p>
+            )}
           </Card>
         )}
 

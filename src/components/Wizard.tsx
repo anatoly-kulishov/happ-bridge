@@ -18,7 +18,7 @@ export function Wizard({ state, onDone, onState }: Props) {
   const [step, setStep] = useState(0)
   const [lanUser, setLanUser] = useState('')
   const [lanPass, setLanPass] = useState('')
-  const { busy, copied, findPhone, scanPeers, scanning, copy } = useBridgeActions(onState)
+  const { busy, copied, findPhone, copy } = useBridgeActions(onState)
 
   const runFind = async () => {
     if (lanUser.trim() || lanPass) {
@@ -173,12 +173,13 @@ export function Wizard({ state, onDone, onState }: Props) {
                 peers={state.peers}
                 selectedIp={state.phoneIp}
                 busy={busy}
-                onRefresh={() => void scanPeers()}
-                refreshing={scanning}
                 onSelect={async (ip) => {
                   const next = await window.happBridge.selectPhone(ip)
                   onState(next)
                   if (next.status === 'connected') setStep(2)
+                }}
+                onDisconnect={async () => {
+                  onState(await window.happBridge.disconnect())
                 }}
               />
               {state.status === 'disconnected' && state.peers.length === 0 && !bridgeError && (
