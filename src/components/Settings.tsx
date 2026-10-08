@@ -573,13 +573,13 @@ export function Settings({ state, onState, onShowWizard }: Props) {
         </Card>
       </div>
 
-      <footer className="flex shrink-0 items-center gap-2 border-t border-zinc-800/80 bg-[var(--hb-bg)] px-5 pb-5 pt-3">
+      <footer className="flex shrink-0 items-center border-t border-zinc-800/80 bg-[var(--hb-bg)] px-5 pb-5 pt-3">
         <button type="button" className="btn-ghost flex items-center gap-1.5" onClick={onShowWizard}>
           <Plug size={16} />
           Мастер
         </button>
         {dirty && !saved && (
-          <span className="group relative flex items-center" title="Несохранённые изменения">
+          <span className="group relative ml-2 flex items-center" title="Несохранённые изменения">
             <span className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-300" />
             <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-amber-200/90 opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
               Несохранённые изменения
@@ -587,11 +587,13 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           </span>
         )}
         <div className="flex-1" />
+        <span className="text-xs text-zinc-600">v1.2.1</span>
+        <div className="flex-1" />
         <button
           type="button"
           disabled={saving}
           onClick={() => void save()}
-          className="btn-primary flex min-w-[7.5rem] items-center justify-center gap-1.5"
+          className="btn-primary ml-2 flex min-w-[7.5rem] items-center justify-center gap-1.5"
         >
           {saving ? (
             <Loader2 size={16} className="animate-spin" aria-hidden />
@@ -600,7 +602,6 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           )}
           {saved ? 'Сохранено' : saving ? 'Сохраняю…' : 'Сохранить'}
         </button>
-        <span className="ml-2 text-xs text-zinc-600">v1.2.1</span>
       </footer>
     </div>
   )
