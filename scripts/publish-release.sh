@@ -33,7 +33,8 @@ fi
 
 # Upload local files to the release
 # electron-builder produces files; we upload whatever matches the version in release/
-for asset in "$ROOT"/release/*-"${VERSION}"-arm64.dmg "$ROOT"/release/*-"${VERSION}"-arm64-mac.zip; do
+for asset in "$ROOT"/release/*-"${VERSION}"-arm64.dmg "$ROOT"/release/*-"${VERSION}"-arm64.zip \
+             "$ROOT"/release/*-"${VERSION}"-arm64.dmg.blockmap "$ROOT"/release/*-"${VERSION}"-arm64.zip.blockmap; do
   if [[ -f "$asset" ]]; then
     echo "Uploading $(basename "$asset")..."
     gh release upload "$TAG" "$asset" --repo "$REPO" --clobber
@@ -91,7 +92,7 @@ compute_sha512() {
 }
 
 if [[ -z "$ZIP_SHA512" ]]; then
-  ZIP_CANDIDATE="$(ls "$ROOT"/release/*-"${VERSION}"-arm64-mac.zip 2>/dev/null | head -1)"
+  ZIP_CANDIDATE="$(ls "$ROOT"/release/*-"${VERSION}"-arm64.zip 2>/dev/null | head -1)"
   ZIP_SHA512="$(compute_sha512 "$ZIP_CANDIDATE")"
   ZIP_SIZE="$(stat -f %z "$ZIP_CANDIDATE" 2>/dev/null || stat -c %s "$ZIP_CANDIDATE" 2>/dev/null)"
 fi
