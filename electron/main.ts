@@ -25,6 +25,7 @@ import { BridgeSession } from './session'
 import { socksAuthFromSettings, statusPresentation, traySecurityPresentation } from './types'
 import type { AppSettings, BridgeStatus } from './types'
 import { createUpdater } from './updater'
+import { log } from './log'
 
 const isDev = !app.isPackaged
 
@@ -416,6 +417,8 @@ function injectPortsFromState(s: {
 }
 
 app.whenReady().then(async () => {
+  log('main', 'app ready: version=%s electron=%s node=%s darwin=%s',
+    app.getVersion(), process.versions.electron, process.versions.node, process.platform)
   if (process.platform === 'darwin') app.dock?.hide()
 
   const updater = createUpdater({

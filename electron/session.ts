@@ -1,4 +1,5 @@
 import { Notification } from 'electron'
+import { log } from './log'
 import { runDiagnostics } from './diagnostics'
 import {
   chooseDiscoveredPeer,
@@ -115,6 +116,8 @@ export class BridgeSession {
 
   static async create(hooks: SessionHooks): Promise<BridgeSession> {
     const settings = await loadSettings()
+    log('session', 'create: enabled=%s manualIp=%s lastPhoneIp=%s recent=%o ports=%d/%d',
+      settings.enabled, settings.manualIp, settings.lastPhoneIp, settings.recentPhoneIps, settings.socksPort, settings.httpPort)
     const session = new BridgeSession(hooks, settings)
     await session.refreshWifi()
     return session
@@ -185,6 +188,9 @@ export class BridgeSession {
     }
     if (this.holdOff && reason !== 'user') return false
     if (reason === 'user') this.holdOff = false
+
+    log('connect', 'reason=%s enabled=%s holdOff=%s phoneIp=%s status=%s',
+      reason, this.settings.enabled, this.holdOff, this.phoneIp, this.status)
 
     if (this.connectInFlight) {
       this.discoverAbort?.abort()
@@ -416,6 +422,7 @@ export class BridgeSession {
     if (!this.settings.enabled || this.holdOff) return
     const fp = networkFingerprint()
     if (fp === this.lastNetFp) return
+    log('netPoll', 'network changed fp %s → %s → connect(network-change)', this.lastNetFp, fp)
     this.lastNetFp = fp
     this.idleDelayMs = BASE_WATCH_MS
     this.idleFailStreak = 0
@@ -427,6 +434,7 @@ export class BridgeSession {
     this.watchRunning = true
     this.watchAbort = new AbortController()
     this.lastNetFp = networkFingerprint()
+    log('watch', 'startWatch fp=%s (poll 3s)', this.lastNetFp)
     this.netPoll = setInterval(() => this.onNetworkMaybeChanged(), 3000)
     void this.watchLoop()
   }
@@ -451,6 +459,7 @@ export class BridgeSession {
     this.setStatus('searching')
 
     if (reason === 'startup') {
+      log('runConnect', 'reason=startup waiting for local IPv4…')
       await waitForLocalIpv4({
         timeoutMs: STARTUP_NET_WAIT_MS,
         pollMs: 500,
@@ -460,6 +469,9 @@ export class BridgeSession {
     }
 
     await this.refreshWifi()
+    log('runConnect', 'reason=%s wifiSsid=%s localIps=%o manualIp=%s preferred=%o',
+      reason, this.wifiSsid, localIpv4Addresses(), this.settings.manualIp,
+      preferredIpsFromSettings(this.settings, this.wifiSsid))
 
     try {
       const auth = socksAuthFromSettings(this.settings)
@@ -468,6 +480,7 @@ export class BridgeSession {
         reason === 'startup' || reason === 'network-change' || reason === 'watchdog-lost'
 
       this.scanProgress = null
+      log('runConnect', 'discovering… scanSubnet auth=%s timeout=%s', Boolean(auth), coldProbe ? COLD_PROBE_MS : 'default')
       const found = await discoverPhones({
         socksPort: this.settings.socksPort,
         preferredIps,
@@ -480,10 +493,12 @@ export class BridgeSession {
           if (done % 16 === 0) this.hooks.onChange()
         },
       })
+      log('runConnect', 'discover DONE reason=%s found=%o scan=%o', reason, found, this.scanProgress)
 
       this.peers = found
 
       if (found.length === 0) {
+        log('runConnect', 'no phone found. localIps=%o wifiSsid=%s', localIpv4Addresses(), this.wifiSsid)
         await this.relay.stop()
         this.phoneIp = null
         this.setStatus('disconnected')
@@ -511,6 +526,7 @@ export class BridgeSession {
           hasAuth: false,
         })
       if (untrustedNoAuth) {
+        log('runConnect', 'UNTRUSTED network, no auth → not auto-connecting. wifiSsid=%s homeSsids=%o', this.wifiSsid, this.settings.homeSsids)
         await this.relay.stop()
         this.phoneIp = null
         this.setStatus('disconnected')
@@ -528,6 +544,7 @@ export class BridgeSession {
       })
 
       if (!chosen) {
+        log('runConnect', 'chosen=null found=%o manualIp=%s', found, this.settings.manualIp)
         await this.relay.stop()
         this.phoneIp = null
         this.setStatus('disconnected')
@@ -540,6 +557,7 @@ export class BridgeSession {
       }
 
       const authCheck = await checkProxyAuth(chosen, this.settings.socksPort, 1000, auth)
+      log('runConnect', 'authCheck ip=%s → %s', chosen, authCheck)
       if (authCheck !== 'ok') {
         await this.relay.stop()
         this.phoneIp = null
@@ -556,11 +574,13 @@ export class BridgeSession {
       this.idleFailStreak = 0
       await this.bindPeerToWifi(chosen)
       this.setStatus('connected')
+      log('runConnect', 'CONNECTED phoneIp=%s reason=%s', chosen, reason)
 
       if (this.settings.wizardDone) this.announceReady()
       return true
     } catch (err) {
       if (this.discoverAbort.signal.aborted) return false
+      log('runConnect', 'ERROR reason=%s err=%s', reason, err instanceof Error ? err.message : String(err))
       this.errorMessage = presentError(err)
       await this.relay.stop()
       this.phoneIp = null
@@ -584,6 +604,8 @@ export class BridgeSession {
       }
 
       if (this.status === 'disconnected') {
+        log('watchLoop', 'tick status=disconnected wait=%d enable=%s holdOff=%s peers=%o manual=%s',
+          wait, this.settings.enabled, this.holdOff, this.peers, this.settings.manualIp)
         if (this.peers.length > 1 && !this.settings.manualIp && !this.settings.lastPhoneIp) {
           continue
         }
@@ -614,6 +636,7 @@ export class BridgeSession {
     }
 
     this.probeFails += 1
+    log('healthCheck', 'probe FAIL phoneIp=%s fails=%d', this.phoneIp, this.probeFails)
     if (this.probeFails < PROBE_FAILS_NEEDED) return
 
     this.probeFails = 0
@@ -621,6 +644,7 @@ export class BridgeSession {
     this.relay.setPhoneIp(null)
     this.setStatus('disconnected')
     this.notifyLostOnce()
+    log('healthCheck', 'LOST phone after %d fails → reconnect watchdog-lost', PROBE_FAILS_NEEDED)
     if (this.connectInFlight) return
     await this.connect('watchdog-lost')
   }
@@ -663,6 +687,7 @@ export class BridgeSession {
   }
 
   private setStatus(next: BridgeStatus): void {
+    log('status', '%s → %s (phoneIp=%s)', this.status, next, this.phoneIp)
     this.status = next
     this.hooks.onChange()
   }

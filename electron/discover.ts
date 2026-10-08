@@ -1,5 +1,6 @@
 import os from 'node:os'
 import { probeSocks5, type SocksAuth } from './relay'
+import { log } from './log'
 
 export type DiscoverOptions = {
   socksPort: number
@@ -57,9 +58,12 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
   const total = ordered.length + hosts.length
   const tryOne = async (ip: string, abort?: AbortSignal): Promise<string | null> => {
     if (signal?.aborted || abort?.aborted) return null
+    const start = Date.now()
     const ok = await probeSocks5(ip, socksPort, probeMs, abort ?? signal, auth)
     probed += 1
     onProgress?.(probed, total)
+    if (ok) log('discover', 'HIT ip=%s rtt=%dms', ip, Date.now() - start)
+    else if (ordered.includes(ip)) log('discover', 'probe preferred/manual ip=%s failed (rtt=%dms)', ip, Date.now() - start)
     if (signal?.aborted || abort?.aborted) return null
     return ok ? ip : null
   }
