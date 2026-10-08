@@ -6,7 +6,7 @@ Set Telegram, Cursor, Firefox, and WebStorm to `127.0.0.1` once. When the phone 
 
 [Русский](#happ-bridge-рус) · [English](#happ-bridge-en) · [Download](#install) · [Site](https://anatoly-kulishov.github.io/happ-bridge/) · [Changelog](docs/CHANGELOG.md)
 
-**Текущая версия:** 1.2.3
+**Текущая версия:** 1.2.4
 
 ---
 
