@@ -1,17 +1,27 @@
-Установка Happ Bridge 1.1.5 (без подписи Apple)
+Установка Happ Bridge (без подписи Apple)
 =============================================
 
-1. Скачайте .dmg и откройте диск.
+1. Скачайте .dmg и откройте диск (двойной клик по файлу).
 2. Запустите «Install Happ Bridge.command» → «Установить».
    Приложение попадёт в «Программы».
 
-Если macOS блокирует УСТАНОВЩИК - в Терминале (одна строка):
+Если macOS блокирует УСТАНОВЩИК - в Терминале (диск из шага 1 должен быть открыт):
 
-xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command" && open "/Volumes/Happ Bridge/Install Happ Bridge.command"
+if [ ! -d "/Volumes/Happ Bridge" ]; then
+  echo "Диск «Happ Bridge» не открыт. Сделайте двойной клик по файлу .dmg в Загрузках, дождитесь диска и повторите."
+  exit 1
+fi
+xattr -cr "/Volumes/Happ Bridge/Install Happ Bridge.command"
+open "/Volumes/Happ Bridge/Install Happ Bridge.command"
 
-Если приложение УЖЕ установлено, но не запускается - в Терминале (одна строка):
+Если приложение УЖЕ установлено, но не запускается - в Терминале:
 
-xattr -cr "/Applications/Happ Bridge.app" && open "/Applications/Happ Bridge.app"
+if [ ! -d "/Applications/Happ Bridge.app" ]; then
+  echo "Приложение не установлено. Сначала выполните Install Happ Bridge.command."
+  exit 1
+fi
+xattr -cr "/Applications/Happ Bridge.app"
+open "/Applications/Happ Bridge.app"
 
 Иконка появится в строке меню (справа вверху), не в Dock.
 
