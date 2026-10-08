@@ -194,8 +194,8 @@ function firefoxInjectInfo(homeDir: string, backups: BackupStore): InjectTargetI
       applied: Boolean(backups.firefox),
       path: null,
       detail: ffHasApp
-        ? 'нет доступа к профилю — включите Полный доступ к диску для Happ Bridge'
-        : 'Firefox: нет доступа к профилю (Полный доступ к диску)',
+        ? 'нет доступа к профилю — откройте Системные настройки → Конфиденциальность и безопасность → Полный доступ к диску → включите Happ Bridge, затем перезапустите браузер'
+        : 'Firefox: нет доступа к профилю. Системные настройки → Конфиденциальность и безопасность → Полный доступ к диску → Happ Bridge',
     }
   }
   return {
@@ -1033,7 +1033,10 @@ export function isPermissionDeniedError(err: unknown): boolean {
 }
 
 export function permissionDeniedMessage(appLabel: string): string {
-  return `${appLabel}: нет доступа к файлам. Системные настройки → Конфиденциальность и безопасность → Полный доступ к диску → включите Happ Bridge (или Electron при разработке), затем перезапустите.`
+  return `${appLabel}: нет доступа к файлам настроек. ` +
+    `Системные настройки → Конфиденциальность и безопасность → ` +
+    `Полный доступ к диску → включите Happ Bridge (или Electron при разработке), ` +
+    `затем перезапустите приложение.`
 }
 
 function readJsonObject(filePath: string): Record<string, unknown> {
