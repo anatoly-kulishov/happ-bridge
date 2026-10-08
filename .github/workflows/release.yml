@@ -33,9 +33,9 @@ jobs:
         run: npm run build
 
       - name: Package (electron-builder)
-        run: npx electron-builder --mac
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # --publish never: do not let electron-builder create a draft release;
+        # scripts/publish-release.sh owns GitHub Releases uploads.
+        run: npx electron-builder --mac --publish never
 
       - name: Publish release assets
         run: bash scripts/publish-release.sh

@@ -104,12 +104,23 @@ cat "$YML_FILE"
 echo "Uploading latest-mac.yml..."
 gh release upload "$TAG" "$YML_FILE" --repo "$REPO" --clobber
 
-# Verify: latest-mac.yml downloadable and contains correct version + filenames
+# Verify: latest-mac.yml downloadable and contains correct version + filenames.
+# Draft→public and CDN can lag a few seconds after upload.
 YML_DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${TAG}/latest-mac.yml"
-YML_CONTENT="$(curl -fsSL "$YML_DOWNLOAD_URL")" || {
+# Ensure the release is published (electron-builder may have created a draft).
+gh release edit "$TAG" --repo "$REPO" --draft=false >/dev/null 2>&1 || true
+YML_CONTENT=""
+for attempt in 1 2 3 4 5 6 7 8; do
+  if YML_CONTENT="$(curl -fsSL "$YML_DOWNLOAD_URL" 2>/dev/null)"; then
+    break
+  fi
+  echo "Waiting for latest-mac.yml to become public (attempt ${attempt}/8)…"
+  sleep 3
+done
+if [[ -z "$YML_CONTENT" ]]; then
   echo "Error: Cannot download latest-mac.yml from $YML_DOWNLOAD_URL" >&2
   exit 1
-}
+fi
 if ! echo "$YML_CONTENT" | grep -q "^version: ${VERSION}$"; then
   echo "Error: latest-mac.yml does not contain 'version: ${VERSION}'" >&2
   exit 1
