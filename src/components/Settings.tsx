@@ -48,6 +48,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
   const [saved, setSaved] = useState(false)
   const [advanced, setAdvanced] = useState(false)
   const [showPresets, setShowPresets] = useState(false)
+  const [showLanPassword, setShowLanPassword] = useState(false)
   const advancedRef = useRef<HTMLDivElement>(null)
   const securityRef = useRef<HTMLDivElement>(null)
   const {
@@ -445,37 +446,62 @@ export function Settings({ state, onState, onShowWizard }: Props) {
               label="Запускать при входе в macOS"
             />
 
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
-              <p className="text-sm font-medium text-zinc-200">Пароль Happ (LAN)</p>
-              <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
-                Те же данные, что в Happ. Пароль хранится только в Keychain macOS.
-              </p>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <Field label="Логин" value={proxyUser} onChange={setProxyUser} placeholder="user" />
-                <Field
-                  label="Пароль"
-                  value={proxyPassword}
-                  onChange={(v) => {
-                    setProxyPassword(v)
-                    setClearPassword(false)
-                  }}
-                  placeholder={state.lanPasswordSet ? 'в Keychain' : '••••'}
-                  type="password"
-                />
-              </div>
-              {state.lanAuthOn && (
-                <button
-                  type="button"
-                  className="mt-2 text-xs text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
-                  onClick={() => {
-                    setProxyPassword('')
-                    setClearPassword(true)
-                  }}
-                >
-                  {clearPassword
-                    ? 'Пароль будет удалён при сохранении'
-                    : 'Удалить пароль из Keychain'}
-                </button>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/40">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors hover:bg-zinc-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                onClick={() => setShowLanPassword((v) => !v)}
+                aria-expanded={showLanPassword}
+              >
+                <span className="flex items-center gap-1.5 text-sm text-zinc-300">
+                  <ShieldAlert size={14} />
+                  Пароль Happ (LAN)
+                </span>
+                <span className="flex items-center gap-2">
+                  {state.lanPasswordSet && (
+                    <span className="text-xs text-emerald-400/70">задан</span>
+                  )}
+                  {showLanPassword ? (
+                    <ChevronDown size={14} className="text-zinc-500" />
+                  ) : (
+                    <ChevronRight size={14} className="text-zinc-500" />
+                  )}
+                </span>
+              </button>
+
+              {showLanPassword && (
+                <div className="space-y-2 border-t border-zinc-800 px-3 pb-3 pt-2">
+                  <p className="text-xs leading-relaxed text-zinc-500">
+                    Те же данные, что в Happ. Пароль хранится только в Keychain macOS.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Field label="Логин" value={proxyUser} onChange={setProxyUser} placeholder="user" />
+                    <Field
+                      label="Пароль"
+                      value={proxyPassword}
+                      onChange={(v) => {
+                        setProxyPassword(v)
+                        setClearPassword(false)
+                      }}
+                      placeholder={state.lanPasswordSet ? 'в Keychain' : '••••'}
+                      type="password"
+                    />
+                  </div>
+                  {state.lanPasswordSet && (
+                    <button
+                      type="button"
+                      className="text-xs text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                      onClick={() => {
+                        setProxyPassword('')
+                        setClearPassword(true)
+                      }}
+                    >
+                      {clearPassword
+                        ? 'Пароль будет удалён при сохранении'
+                        : 'Удалить пароль из Keychain'}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -574,6 +600,15 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           )}
           {saved ? 'Сохранено' : saving ? 'Сохраняю…' : 'Сохранить'}
         </button>
+        <button
+          type="button"
+          onClick={() => void window.happBridge.exportDebugInfo()}
+          className="ml-2 flex items-center gap-1 text-xs text-zinc-600 transition-colors hover:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+          title="Копировать полное состояние в буфер обмена для отправки в поддержку"
+        >
+          <Copy size={12} />
+          Экспорт для поддержки
+        </button>
       </footer>
     </div>
   )
@@ -641,14 +676,6 @@ function UpdateRow({
         >
           <BusyIcon busy={busy && !downloading} icon={Sparkles} size={12} />
           {downloading ? 'Скачиваем' : busy ? 'Проверяю…' : 'Проверить'}
-        </button>
-        <button
-          type="button"
-          onClick={() => void window.happBridge.exportDebugInfo()}
-          className="flex shrink-0 items-center gap-1 text-xs text-zinc-600 transition-colors hover:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
-        >
-          <Copy size={11} />
-          Экспорт для поддержки
         </button>
       </div>
     </div>
