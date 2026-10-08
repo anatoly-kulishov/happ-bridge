@@ -5,6 +5,12 @@ type UpdateHooks = {
   onChange: (info: UpdateInfo) => void
 }
 
+type ProgressEvt = {
+  percent: number
+  transferred: number
+  total: number
+}
+
 export function createUpdater(hooks: UpdateHooks): {
   check: () => Promise<UpdateInfo>
   getInfo: () => UpdateInfo
@@ -39,7 +45,9 @@ export function createUpdater(hooks: UpdateHooks): {
         // electron-updater is CJS; in native-ESM build the named export isn't promoted by
         // cjs-module-lexer, so read it off `default` when the named one is absent.
         const mod = await import('electron-updater')
-        const autoUpdater = (mod.default as { autoUpdater?: typeof mod.autoUpdater })?.autoUpdater ?? mod.autoUpdater
+        const autoUpdater =
+          (mod.default as { autoUpdater?: typeof mod.autoUpdater })?.autoUpdater ??
+          mod.autoUpdater
         if (!autoUpdater) {
           throw new Error('autoUpdater не найден: несовместимый экспорт electron-updater')
         }
@@ -48,54 +56,85 @@ export function createUpdater(hooks: UpdateHooks): {
 
         return await new Promise<UpdateInfo>((resolve) => {
           let settled = false
-          const done = (next: UpdateInfo) => {
+          let downloadVersion: string | undefined
+
+          const finishCheck = (next: UpdateInfo) => {
             if (settled) return
             settled = true
-            cleanup()
             emit(next)
             resolve(next)
           }
 
-          const cleanup = () => {
+          const detachCheckListeners = () => {
             autoUpdater.removeListener('update-available', onAvailable)
             autoUpdater.removeListener('update-not-available', onNot)
-            autoUpdater.removeListener('error', onError)
-            autoUpdater.removeListener('update-downloaded', onDownloaded)
           }
 
-          // Download finishes after checkForUpdates resolves — keep the user posted.
+          const detachDownloadListeners = () => {
+            autoUpdater.removeListener('download-progress', onProgress)
+            autoUpdater.removeListener('update-downloaded', onDownloaded)
+            autoUpdater.removeListener('error', onError)
+          }
+
+          const onProgress = (p: ProgressEvt) => {
+            const percent = Math.max(0, Math.min(100, Math.round(p.percent)))
+            const ver = downloadVersion ? ` ${downloadVersion}` : ''
+            emit({
+              status: 'downloading',
+              message: `Скачиваем${ver}… ${percent}%`,
+              version: downloadVersion,
+              progress: percent,
+            })
+          }
+
           const onDownloaded = (u: { version: string }) => {
+            detachDownloadListeners()
             emit({
               status: 'available',
               message: `Версия ${u.version} скачана — перезапустите приложение для установки.`,
               version: u.version,
+              progress: 100,
             })
           }
 
           const onAvailable = (u: { version: string }) => {
-            done({
-              status: 'available',
-              message: `Найдена версия ${u.version}. Скачиваем…`,
+            downloadVersion = u.version
+            // Keep download listeners; only end the "check" promise so the button unblocks.
+            detachCheckListeners()
+            finishCheck({
+              status: 'downloading',
+              message: `Найдена версия ${u.version}. Скачиваем… 0%`,
               version: u.version,
+              progress: 0,
             })
           }
+
           const onNot = () => {
-            done({
+            detachCheckListeners()
+            detachDownloadListeners()
+            finishCheck({
               status: 'not-available',
               message: `У вас актуальная версия ${app.getVersion()}`,
               version: app.getVersion(),
             })
           }
+
           const onError = (err: Error) => {
-            done({
+            detachCheckListeners()
+            detachDownloadListeners()
+            const next: UpdateInfo = {
               status: 'error',
               message: err.message || 'Не удалось проверить обновления',
-            })
+              version: downloadVersion,
+            }
+            if (!settled) finishCheck(next)
+            else emit(next)
           }
 
           autoUpdater.once('update-available', onAvailable)
           autoUpdater.once('update-not-available', onNot)
-          autoUpdater.once('error', onError)
+          autoUpdater.on('error', onError)
+          autoUpdater.on('download-progress', onProgress)
           autoUpdater.on('update-downloaded', onDownloaded)
 
           void autoUpdater.checkForUpdates().catch((err: Error) => onError(err))

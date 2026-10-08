@@ -14,7 +14,7 @@ import {
   Wrench,
 } from 'lucide-react'
 import { useRef, useState } from 'react'
-import type { BridgeState, DiagnosticCheck } from '../../electron/types'
+import type { BridgeState, DiagnosticCheck, UpdateInfo } from '../../electron/types'
 import { DEFAULT_SETTINGS } from '../../electron/types'
 import { useBridgeActions } from '../hooks/useBridgeActions'
 import { AlertBanner, parseBridgeError } from './AlertBanner'
@@ -538,18 +538,11 @@ export function Settings({ state, onState, onShowWizard }: Props) {
               )}
             </div>
 
-            <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2">
-              <span className="text-xs text-zinc-400">{state.update.message}</span>
-              <button
-                type="button"
-                disabled={checkingUpdates}
-                className="flex items-center gap-1 text-xs text-sky-400 transition-colors hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
-                onClick={() => void checkUpdates()}
-              >
-                <BusyIcon busy={checkingUpdates} icon={Sparkles} size={12} />
-                {checkingUpdates ? 'Проверяю…' : 'Проверить'}
-              </button>
-            </div>
+            <UpdateRow
+              update={state.update}
+              checking={checkingUpdates}
+              onCheck={() => void checkUpdates()}
+            />
           </div>
         </Card>
       </div>
@@ -582,6 +575,74 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           {saved ? 'Сохранено' : saving ? 'Сохраняю…' : 'Сохранить'}
         </button>
       </footer>
+    </div>
+  )
+}
+
+function UpdateRow({
+  update,
+  checking,
+  onCheck,
+}: {
+  update: UpdateInfo
+  checking: boolean
+  onCheck: () => void
+}) {
+  const downloading = update.status === 'downloading'
+  const busy = checking || update.status === 'checking' || downloading
+  const percent = downloading ? Math.max(0, Math.min(100, update.progress ?? 0)) : null
+  const ready = update.status === 'available' && (update.progress === 100 || /скачана/i.test(update.message))
+  const errored = update.status === 'error'
+
+  return (
+    <div
+      className={`space-y-2 rounded-lg border px-3 py-2 ${
+        errored
+          ? 'border-red-500/30 bg-red-500/10'
+          : ready
+            ? 'border-emerald-500/30 bg-emerald-500/10'
+            : 'border-zinc-800 bg-zinc-950/40'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p
+            className={`text-xs leading-relaxed ${
+              errored ? 'text-red-200' : ready ? 'text-emerald-200' : 'text-zinc-400'
+            }`}
+          >
+            {update.message}
+          </p>
+          {percent != null && (
+            <div
+              className="mt-2 flex items-center gap-2"
+              role="progressbar"
+              aria-valuenow={percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Скачивание обновления"
+            >
+              <Loader2 size={12} className="shrink-0 animate-spin text-sky-400" aria-hidden />
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800">
+                <div
+                  className="h-full rounded-full bg-sky-500 transition-[width] duration-200"
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+              <span className="shrink-0 text-[11px] tabular-nums text-zinc-500">{percent}%</span>
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          disabled={busy}
+          className="flex shrink-0 items-center gap-1 text-xs text-sky-400 transition-colors hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+          onClick={onCheck}
+        >
+          <BusyIcon busy={busy && !downloading} icon={Sparkles} size={12} />
+          {downloading ? 'Скачиваем' : busy ? 'Проверяю…' : 'Проверить'}
+        </button>
+      </div>
     </div>
   )
 }

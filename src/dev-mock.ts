@@ -175,13 +175,37 @@ export function installDevMock() {
         update: { status: 'checking', message: 'Проверяем обновления…' },
       }
       broadcast(state)
-      await delay(600)
+      await delay(400)
       state = {
         ...state,
         update: {
-          status: 'not-available',
-          message: 'У вас актуальная версия 1.1.6',
-          version: '1.1.6',
+          status: 'downloading',
+          message: 'Найдена версия 1.1.9. Скачиваем… 0%',
+          version: '1.1.9',
+          progress: 0,
+        },
+      }
+      broadcast(state)
+      for (const progress of [18, 42, 67, 91, 100]) {
+        await delay(250)
+        state = {
+          ...state,
+          update: {
+            status: 'downloading',
+            message: `Скачиваем 1.1.9… ${progress}%`,
+            version: '1.1.9',
+            progress,
+          },
+        }
+        broadcast(state)
+      }
+      state = {
+        ...state,
+        update: {
+          status: 'available',
+          message: 'Версия 1.1.9 скачана — перезапустите приложение для установки.',
+          version: '1.1.9',
+          progress: 100,
         },
       }
       broadcast(state)
