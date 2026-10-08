@@ -19,8 +19,9 @@ xattr -cr "/Applications/Happ Bridge.app" && open "/Applications/Happ Bridge.app
 
 ### After a macOS update — checklist
 1. **Local Network:** Системные настройки → Конфиденциальность и безопасность → Локальная сеть → включите **Happ Bridge** (после крупного обновления macOS доступ часто сбрасывается).
-2. **Location (optional):** разрешите геолокацию для Happ Bridge, если нужен SSID (домашние сети / быстрый peer по Wi‑Fi).
-3. **Inject apps:** один раз откройте Cursor / WebStorm / Firefox, если прописка SOCKS жалуется на отсутствие профиля (Firefox) — конфиги Cursor/WebStorm Bridge может создать сам, если `.app` уже в `/Applications`.
+2. **Full Disk Access (Firefox inject):** Firefox `profiles.ini` can be blocked (`EPERM`). Without access, older builds crashed status and showed **all** apps as «не найдено». Grant **Полный доступ к диску** to Happ Bridge (or Electron while developing), then restart.
+3. **Location (optional):** разрешите геолокацию для Happ Bridge, если нужен SSID (домашние сети / быстрый peer по Wi‑Fi).
+4. **Inject apps:** один раз откройте Cursor / WebStorm / Firefox, если прописка SOCKS жалуется на отсутствие профиля (Firefox) — конфиги Cursor/WebStorm Bridge может создать сам, если `.app` уже в `/Applications`.
 
 ### What's new
 - **Cold-boot discovery** — wait for a local IPv4 before the first scan; longer probe timeout after startup / wake; softer retry backoff while Wi‑Fi is up

@@ -528,20 +528,68 @@ async function main() {
         '2024.3.2',
       )
       const wsPaths = webstormProxyPathsFromBundles(home)
-      assert.deepEqual(wsPaths, [
-        path.join(
-          home,
-          'Library/Application Support/JetBrains/WebStorm2024.3/options/proxy.settings.xml',
-        ),
-      ])
+      const expectedWs = path.join(
+        home,
+        'Library/Application Support/JetBrains/WebStorm2024.3/options/proxy.settings.xml',
+      )
+      // May also include a path derived from /Applications/WebStorm.app on the machine.
+      assert.ok(
+        wsPaths.includes(expectedWs),
+        `expected ${expectedWs} in ${JSON.stringify(wsPaths)}`,
+      )
       const wsApply = applyInject(['webstorm'], ports, home, backup)
       assert.ok(wsApply.results[0]?.ok, JSON.stringify(wsApply.results))
-      assert.ok(fs.existsSync(wsPaths[0]))
+      assert.ok(fs.existsSync(expectedWs))
 
       const ffApply = applyInject(['firefox'], ports, home, backup)
       assert.equal(ffApply.results[0]?.ok, false)
       assert.match(ffApply.results[0]?.message ?? '', /откройте Firefox/i)
     } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  }
+
+  // Inject: unreadable Firefox profiles.ini must not blank Cursor/WebStorm status
+  {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-inject-eperm-'))
+    try {
+      const cursorFile = path.join(
+        home,
+        'Library/Application Support/Cursor/User/settings.json',
+      )
+      fs.mkdirSync(path.dirname(cursorFile), { recursive: true })
+      fs.writeFileSync(cursorFile, '{}\n')
+
+      const wsFile = path.join(
+        home,
+        'Library/Application Support/JetBrains/WebStorm2099.1/options/proxy.settings.xml',
+      )
+      fs.mkdirSync(path.dirname(wsFile), { recursive: true })
+      fs.writeFileSync(wsFile, '<application/>\n')
+
+      const ffIni = path.join(home, 'Library/Application Support/Firefox/profiles.ini')
+      fs.mkdirSync(path.dirname(ffIni), { recursive: true })
+      fs.writeFileSync(ffIni, '[Profile0]\nPath=x\nDefault=1\n')
+      fs.chmodSync(ffIni, 0)
+
+      const status = injectStatus(home)
+      const byId = Object.fromEntries(status.map((s) => [s.id, s]))
+      assert.equal(byId.cursor?.available, true, 'Cursor must stay available')
+      assert.equal(byId.webstorm?.available, true, 'WebStorm must stay available')
+      // Firefox stays listed if /Applications/Firefox.app exists; detail must not crash status.
+      assert.match(byId.firefox?.detail ?? '', /нет доступа|не установлен|откройте Firefox|profiles/i)
+      assert.notEqual(byId.cursor?.available, false)
+
+      fs.chmodSync(ffIni, 0o644)
+    } finally {
+      try {
+        fs.chmodSync(
+          path.join(home, 'Library/Application Support/Firefox/profiles.ini'),
+          0o644,
+        )
+      } catch {
+        // already restored / missing
+      }
       fs.rmSync(home, { recursive: true, force: true })
     }
   }

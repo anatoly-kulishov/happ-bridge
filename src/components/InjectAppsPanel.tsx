@@ -20,6 +20,7 @@ const targetMeta: Record<
 /** Short status when the target cannot be selected. */
 function shortUnavailable(detail?: string): string {
   if (!detail) return 'не найдено'
+  if (/нет доступа/i.test(detail)) return 'нет доступа'
   if (/откройте Firefox/i.test(detail)) return 'нет профиля'
   if (/не установлен/i.test(detail)) return 'не установлено'
   if (/не найден/i.test(detail)) return 'не найдено'
@@ -39,7 +40,17 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
   const [log, setLog] = useState<string | null>(null)
 
   const refresh = async () => {
-    setStatus(await window.happBridge.injectStatus())
+    try {
+      setStatus(await window.happBridge.injectStatus())
+      setLog(null)
+    } catch (err) {
+      setStatus([])
+      setLog(
+        err instanceof Error
+          ? `Не удалось проверить приложения: ${err.message}`
+          : 'Не удалось проверить приложения',
+      )
+    }
   }
 
   useEffect(() => {
@@ -165,6 +176,9 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
                     <CheckCircle2 size={12} />
                     прописано
                   </span>
+                )}
+                {available && /нет доступа/i.test(info?.detail ?? '') && (
+                  <span className="shrink-0 text-xs text-amber-500">нет доступа</span>
                 )}
                 {!available && (
                   <span className="shrink-0 text-xs text-zinc-600">
