@@ -1,3 +1,4 @@
+import net from 'node:net'
 import os from 'node:os'
 import { probeSocks5, type SocksAuth } from './relay'
 import { log } from './log'
@@ -22,6 +23,16 @@ export async function discoverPhone(opts: DiscoverOptions): Promise<string | nul
   const found = await discoverPhones(opts)
   if (found.length === 0) return null
   return pickPreferredPhone(found, opts.manualIp, opts.preferredIps) ?? found[0]
+}
+
+function probeTcp(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket()
+    const timer = setTimeout(() => { socket.destroy(); resolve(false) }, timeoutMs)
+    socket.connect(port, host, () => { clearTimeout(timer); socket.destroy(); resolve(true) })
+    socket.on('error', () => { clearTimeout(timer); socket.destroy(); resolve(false) })
+    socket.on('timeout', () => { clearTimeout(timer); socket.destroy(); resolve(false) })
+  })
 }
 
 /** All Happ SOCKS5 peers on LAN (and preferred list). */
@@ -62,8 +73,15 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
     const ok = await probeSocks5(ip, socksPort, probeMs, abort ?? signal, auth)
     probed += 1
     onProgress?.(probed, total)
-    if (ok) log('discover', 'HIT ip=%s rtt=%dms', ip, Date.now() - start)
-    else if (ordered.includes(ip)) log('discover', 'probe preferred/manual ip=%s failed (rtt=%dms)', ip, Date.now() - start)
+    if (ok) {
+      log('discover', 'HIT ip=%s rtt=%dms', ip, Date.now() - start)
+    } else {
+      if (ordered.includes(ip)) log('discover', 'UDP probe failed ip=%s rtt=%dms, trying TCP…', ip, Date.now() - start)
+      const tcpOk = await probeTcp(ip, socksPort, 1000)
+      if (tcpOk) log('discover', 'TCP fallback HIT ip=%s', ip)
+      if (signal?.aborted || abort?.aborted) return null
+      return tcpOk ? ip : null
+    }
     if (signal?.aborted || abort?.aborted) return null
     return ok ? ip : null
   }
