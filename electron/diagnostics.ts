@@ -111,7 +111,7 @@ export async function runDiagnostics(opts: {
     detail:
       locals.length > 0
         ? `Компьютер в сети: ${locals.join(', ')}`
-        : 'Нет локального IP. Подключитесь к Wi‑Fi.',
+        : 'Нет локального IP. Подключите Mac к той же Wi‑Fi сети, что и телефон с Happ. Если Wi‑Fi подключён — подождите 10–15 сек и нажмите «Найти снова» (после перезагрузки Mac сеть определяется не сразу).',
   })
 
   const candidate =

@@ -186,8 +186,11 @@ export function Wizard({ state, onDone, onState }: Props) {
               />
               {state.status === 'disconnected' && state.peers.length === 0 && !bridgeError && (
                 <AlertBanner tone="danger" title="Телефон не виден">
-                  Проверьте Wi‑Fi, тумблер «Разрешить LAN подключение» в Happ и доступ к
-                  локальной сети для Happ Bridge.
+                  Проверьте по порядку:<br />
+                  1) Телефон подключён к тому же Wi‑Fi что и Mac<br />
+                  2) В Happ на телефоне: «Разрешить LAN подключение» → вкл<br />
+                  3) На Mac: Системные настройки → Конфиденциальность и безопасность → Локальная сеть → включите Happ Bridge<br />
+                  4) Нажмите «Найти» через 10–15 секунд после перезагрузки Mac
                 </AlertBanner>
               )}
               {state.status === 'connected' && (

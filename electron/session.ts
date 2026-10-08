@@ -641,7 +641,7 @@ export class BridgeSession {
     }
     notify(
       'Телефон не найден',
-      'Проверьте Wi‑Fi и тумблер «Разрешить LAN подключение» в Happ.',
+      'Проверьте: 1) Wi‑Fi, 2) LAN вкл в Happ, 3) Локальная сеть в настройках Mac для Happ Bridge',
     )
   }
 
