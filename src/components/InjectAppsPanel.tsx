@@ -17,6 +17,15 @@ const targetMeta: Record<
   firefox: { label: 'Firefox', icon: AppWindow },
 }
 
+/** Short status when the target cannot be selected. */
+function shortUnavailable(detail?: string): string {
+  if (!detail) return 'не найдено'
+  if (/откройте Firefox/i.test(detail)) return 'нет профиля'
+  if (/не установлен/i.test(detail)) return 'не установлено'
+  if (/не найден/i.test(detail)) return 'не найдено'
+  return 'не найдено'
+}
+
 type Props = {
   onState: (s: BridgeState) => void
   /** When the panel is wrapped in a card with its own title, hide the internal header. */
@@ -158,7 +167,9 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
                   </span>
                 )}
                 {!available && (
-                  <span className="shrink-0 text-xs text-zinc-600">не найдено</span>
+                  <span className="shrink-0 text-xs text-zinc-600">
+                    {shortUnavailable(info?.detail)}
+                  </span>
                 )}
               </label>
             </li>

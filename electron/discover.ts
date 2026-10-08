@@ -140,18 +140,62 @@ export function chooseDiscoveredPeer(opts: {
   )
 }
 
-export function localIpv4Addresses(): string[] {
-  const nets = os.networkInterfaces()
+/** Node may report family as `'IPv4'` or numeric `4` depending on version. */
+export function isIpv4Family(family: string | number): boolean {
+  return family === 'IPv4' || family === 4
+}
+
+export function localIpv4Addresses(
+  nets: NodeJS.Dict<os.NetworkInterfaceInfo[]> | undefined = os.networkInterfaces(),
+): string[] {
   const result: string[] = []
-  for (const entries of Object.values(nets)) {
+  for (const entries of Object.values(nets ?? {})) {
     if (!entries) continue
     for (const entry of entries) {
-      if (entry.family === 'IPv4' && !entry.internal) {
+      if (isIpv4Family(entry.family) && !entry.internal) {
         result.push(entry.address)
       }
     }
   }
   return result
+}
+
+/** Poll until a non-internal IPv4 appears (cold boot / wake), or timeout. */
+export async function waitForLocalIpv4(opts?: {
+  timeoutMs?: number
+  pollMs?: number
+  signal?: AbortSignal
+}): Promise<string[]> {
+  const timeoutMs = opts?.timeoutMs ?? 25_000
+  const pollMs = opts?.pollMs ?? 500
+  const signal = opts?.signal
+  const deadline = Date.now() + timeoutMs
+
+  for (;;) {
+    if (signal?.aborted) return localIpv4Addresses()
+    const ips = localIpv4Addresses()
+    if (ips.length > 0) return ips
+    if (Date.now() >= deadline) return ips
+    await sleepMs(Math.min(pollMs, Math.max(0, deadline - Date.now())), signal)
+  }
+}
+
+function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted || ms <= 0) {
+      resolve()
+      return
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      resolve()
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 export function networkFingerprint(localIps = localIpv4Addresses()): string {

@@ -1,8 +1,14 @@
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import {
+  cursorAppBundles,
+  firefoxAppBundles,
+  webstormAppBundles,
+  webstormConfigDirFromVersion,
+} from './appPaths'
 import { socksProxyUrl } from './presets'
 
 const execFileAsync = promisify(execFile)
@@ -116,26 +122,35 @@ export function injectStatus(
 ): InjectTargetInfo[] {
   const backups = loadBackups(backupPath)
   const cursorPath = cursorSettingsPath(homeDir)
+  const cursorUserDir = path.dirname(cursorPath)
+  const cursorHasConfig = fs.existsSync(cursorUserDir)
+  const cursorHasApp = cursorAppBundles(homeDir).length > 0
+
   const wsPaths = webstormProxyPaths(homeDir)
+  const wsHasApp = webstormAppBundles(homeDir).length > 0
+
   const ffPath = firefoxUserJsPath(homeDir)
+  const ffHasApp = firefoxAppBundles(homeDir).length > 0
 
   return [
     {
       id: 'cursor',
       label: 'Cursor',
-      available: fs.existsSync(path.dirname(cursorPath)),
+      available: cursorHasConfig || cursorHasApp,
       applied: Boolean(backups.cursor),
       path: cursorPath,
       detail: fs.existsSync(cursorPath)
         ? cursorPath
-        : fs.existsSync(path.dirname(cursorPath))
+        : cursorHasConfig
           ? 'settings.json ещё нет — создадим при прописке'
-          : 'Cursor не найден',
+          : cursorHasApp
+            ? 'приложение найдено — конфиг создадим при прописке'
+            : 'Cursor не установлен',
     },
     {
       id: 'webstorm',
       label: 'WebStorm',
-      available: wsPaths.length > 0,
+      available: wsPaths.length > 0 || wsHasApp,
       applied: Boolean(backups.webstorm?.length),
       path: wsPaths[0] ?? null,
       detail:
@@ -143,15 +158,21 @@ export function injectStatus(
           ? wsPaths.length === 1
             ? wsPaths[0]
             : `${wsPaths.length} версий: ${wsPaths.map((p) => path.basename(path.dirname(path.dirname(p)))).join(', ')}`
-          : 'WebStorm не найден',
+          : wsHasApp
+            ? 'приложение найдено — конфиг создадим при прописке'
+            : 'WebStorm не установлен',
     },
     {
       id: 'firefox',
       label: 'Firefox',
-      available: Boolean(ffPath),
+      available: Boolean(ffPath) || ffHasApp,
       applied: Boolean(backups.firefox),
       path: ffPath,
-      detail: ffPath ?? 'Профиль Firefox не найден',
+      detail: ffPath
+        ? ffPath
+        : ffHasApp
+          ? 'откройте Firefox один раз, чтобы создать профиль'
+          : 'Firefox не установлен',
     },
   ]
 }
@@ -427,8 +448,9 @@ function applyCursor(
 ): InjectActionResult {
   const filePath = cursorSettingsPath(homeDir)
   const dir = path.dirname(filePath)
-  if (!fs.existsSync(dir)) {
-    return { id: 'cursor', ok: false, message: 'Папка Cursor не найдена' }
+  const hasApp = cursorAppBundles(homeDir).length > 0
+  if (!fs.existsSync(dir) && !hasApp) {
+    return { id: 'cursor', ok: false, message: 'Cursor не установлен' }
   }
 
   const existed = fs.existsSync(filePath)
@@ -486,9 +508,20 @@ function applyWebstorm(
   homeDir: string,
   backups: BackupStore,
 ): InjectActionResult {
-  const paths = webstormProxyPaths(homeDir)
+  let paths = webstormProxyPaths(homeDir)
   if (paths.length === 0) {
-    return { id: 'webstorm', ok: false, message: 'WebStorm не найден' }
+    const created = webstormProxyPathsFromBundles(homeDir)
+    if (created.length === 0) {
+      const hasApp = webstormAppBundles(homeDir).length > 0
+      return {
+        id: 'webstorm',
+        ok: false,
+        message: hasApp
+          ? 'WebStorm установлен, но не удалось определить версию конфига — откройте IDE один раз'
+          : 'WebStorm не установлен',
+      }
+    }
+    paths = created
   }
 
   if (!backups.webstorm) {
@@ -543,7 +576,14 @@ function applyFirefox(
   const userJs = firefoxUserJsPath(homeDir)
   const prefsJs = firefoxPrefsJsPath(homeDir)
   if (!userJs || !prefsJs) {
-    return { id: 'firefox', ok: false, message: 'Профиль Firefox не найден' }
+    const hasApp = firefoxAppBundles(homeDir).length > 0
+    return {
+      id: 'firefox',
+      ok: false,
+      message: hasApp
+        ? 'Откройте Firefox один раз, чтобы создать профиль, затем повторите прописку'
+        : 'Firefox не установлен',
+    }
   }
 
   const existed = fs.existsSync(userJs)
@@ -836,6 +876,46 @@ function webstormProxyPaths(homeDir: string): string[] {
     .reverse()
 
   return dirs.map((name) => path.join(root, name, 'options', 'proxy.settings.xml'))
+}
+
+/** When no JetBrains config yet, derive proxy.settings.xml paths from installed .app versions. */
+export function webstormProxyPathsFromBundles(homeDir: string): string[] {
+  const root = jetbrainsRoot(homeDir)
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const bundle of webstormAppBundles(homeDir)) {
+    const version = readBundleShortVersionSync(bundle)
+    if (!version) continue
+    const dirName = webstormConfigDirFromVersion(version)
+    if (!dirName || seen.has(dirName)) continue
+    seen.add(dirName)
+    out.push(path.join(root, dirName, 'options', 'proxy.settings.xml'))
+  }
+  return out
+}
+
+/** CFBundleShortVersionString from Info.plist (binary-plist safe via defaults). */
+export function readBundleShortVersionSync(bundlePath: string): string | null {
+  const infoDir = path.join(bundlePath, 'Contents', 'Info')
+  try {
+    const stdout = execFileSync(
+      'defaults',
+      ['read', infoDir, 'CFBundleShortVersionString'],
+      { encoding: 'utf8' },
+    )
+    const v = stdout.trim()
+    return v || null
+  } catch {
+    // Fallback: plain-text Info.plist
+    try {
+      const plist = fs.readFileSync(path.join(bundlePath, 'Contents', 'Info.plist'), 'utf8')
+      const m =
+        /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/.exec(plist)
+      return m?.[1]?.trim() || null
+    } catch {
+      return null
+    }
+  }
 }
 
 function compareWebstormVersion(a: string, b: string): number {

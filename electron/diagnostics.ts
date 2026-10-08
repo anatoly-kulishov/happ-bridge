@@ -49,6 +49,21 @@ export async function runDiagnostics(opts: {
     detail: happDetail,
   })
 
+  // After macOS upgrades TCC often resets Local Network; denial looks like "no phone".
+  const lanUpButUnreachable = locals.length > 0 && Boolean(candidate) && !happOk
+  checks.push({
+    id: 'local-network',
+    ok: !lanUpButUnreachable,
+    label: 'Доступ к локальной сети',
+    detail: lanUpButUnreachable
+      ? 'Есть Wi‑Fi IP, но телефон не отвечает. После обновления macOS проверьте: Системные настройки → Конфиденциальность и безопасность → Локальная сеть → Happ Bridge (вкл.). Также тумблер «Разрешить LAN подключение» в Happ.'
+      : locals.length === 0
+        ? 'Сначала подключитесь к Wi‑Fi.'
+        : happOk
+          ? 'Локальная сеть доступна — Happ отвечает.'
+          : 'Когда телефон найден хотя бы раз, здесь появится подсказка при сбоях доступа.',
+  })
+
   checks.push({
     id: 'auth',
     ok: true,

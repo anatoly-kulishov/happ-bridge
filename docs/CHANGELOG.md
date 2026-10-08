@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.8 - 2026-10-08
+
+### Fixed
+- Cold-boot / post-restart phone discovery: wait for local IPv4 before first scan, longer wake/startup probe timeout, softer idle backoff while LAN is up
+- `os.networkInterfaces()` family check accepts both `'IPv4'` and numeric `4` (empty subnet scan otherwise)
+- Wi‑Fi SSID: discover real Wi‑Fi devices via `networksetup -listallhardwareports` instead of hardcoded `en0`–`en2`
+- Inject «не найдено»: Cursor / WebStorm / Firefox are available when the `.app` is installed even if Application Support config is missing; Cursor and WebStorm configs are created on «Прописать»
+- Diagnostics: Local Network permission hint when Wi‑Fi IP exists but Happ does not answer (common after macOS upgrades)
+
+### Added
+- `NSLocationWhenInUseUsageDescription` for SSID reads on modern macOS
+- Release notes / upgrade checklist in `docs/release-notes-1.1.8.md`
+
 ## 1.1.7 - 2026-09-30
 
 ### Added

@@ -11,7 +11,7 @@ import {
 } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import { resolveInjectIcons } from './appIcons'
+import { resolveInjectIcons, type InjectIconMap } from './appIcons'
 import {
   applyInject,
   injectStatus,
@@ -300,7 +300,7 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
 
   const injectStatusWithIcons = async (): Promise<InjectTargetInfo[]> => {
     const status = injectStatus(undefined, injectBackupPath())
-    const icons = await resolveInjectIcons().catch(() => ({}))
+    const icons = await resolveInjectIcons().catch((): InjectIconMap => ({}))
     return status.map((t) => ({ ...t, icon: icons[t.id] ?? null }))
   }
 
@@ -314,7 +314,7 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
       undefined,
       injectBackupPath(),
     )
-    const icons = await resolveInjectIcons().catch(() => ({}))
+    const icons = await resolveInjectIcons().catch((): InjectIconMap => ({}))
     return {
       ...result,
       status: result.status.map((t) => ({ ...t, icon: icons[t.id] ?? null })),
@@ -329,7 +329,7 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
       undefined,
       injectBackupPath(),
     )
-    const icons = await resolveInjectIcons().catch(() => ({}))
+    const icons = await resolveInjectIcons().catch((): InjectIconMap => ({}))
     return {
       ...result,
       status: result.status.map((t) => ({ ...t, icon: icons[t.id] ?? null })),

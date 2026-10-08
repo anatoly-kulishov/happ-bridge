@@ -7,7 +7,12 @@ import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import {
+  webstormConfigDirFromVersion,
+} from '../electron/appPaths'
+import {
   chooseDiscoveredPeer,
+  isIpv4Family,
+  localIpv4Addresses,
   localSubnetHosts,
   prioritizedHosts,
   pickPreferredPhone,
@@ -17,12 +22,15 @@ import {
 import {
   applyInject,
   buildWebstormXml,
+  injectStatus,
   mergeCursorSettings,
   parseFirefoxDefaultProfile,
+  readBundleShortVersionSync,
   restoreCursorSettings,
   revertInject,
   stripFirefoxBlock,
   upsertFirefoxBlock,
+  webstormProxyPathsFromBundles,
 } from '../electron/inject'
 import { ProxyRelay, probePort, probeSocks5 } from '../electron/relay'
 import { httpProxyUrl, presetText } from '../electron/presets'
@@ -191,6 +199,37 @@ async function main() {
     '10.0.0.2',
   )
   assert.equal(pickPreferredPhone(['10.0.0.2'], null, []), null)
+
+  assert.equal(isIpv4Family('IPv4'), true)
+  assert.equal(isIpv4Family(4), true)
+  assert.equal(isIpv4Family('IPv6'), false)
+  assert.equal(isIpv4Family(6), false)
+  assert.deepEqual(
+    localIpv4Addresses({
+      en0: [
+        {
+          address: '192.168.1.10',
+          netmask: '255.255.255.0',
+          family: 4 as unknown as string,
+          mac: '00:00:00:00:00:00',
+          internal: false,
+          cidr: '192.168.1.10/24',
+        },
+        {
+          address: '127.0.0.1',
+          netmask: '255.0.0.0',
+          family: 'IPv4',
+          mac: '00:00:00:00:00:00',
+          internal: true,
+          cidr: '127.0.0.1/8',
+        },
+      ],
+    }),
+    ['192.168.1.10'],
+  )
+  assert.equal(webstormConfigDirFromVersion('2024.3.1'), 'WebStorm2024.3')
+  assert.equal(webstormConfigDirFromVersion('2025.1'), 'WebStorm2025.1')
+  assert.equal(webstormConfigDirFromVersion('nope'), null)
 
   const hosts = localSubnetHosts(['192.168.1.50'])
   assert.ok(hosts.includes('192.168.1.1'))
@@ -432,6 +471,79 @@ async function main() {
     assert.ok(!prefsPhone.includes('127.0.0.1'))
   } finally {
     fs.rmSync(home, { recursive: true, force: true })
+  }
+
+  // Inject: .app present without Application Support still counts as available
+  {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-inject-app-'))
+    const backup = path.join(home, 'backups.json')
+    try {
+      fs.mkdirSync(path.join(home, 'Applications', 'Cursor.app', 'Contents'), {
+        recursive: true,
+      })
+      fs.mkdirSync(path.join(home, 'Applications', 'WebStorm.app', 'Contents'), {
+        recursive: true,
+      })
+      fs.writeFileSync(
+        path.join(home, 'Applications', 'WebStorm.app', 'Contents', 'Info.plist'),
+        [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<plist version="1.0"><dict>',
+          '<key>CFBundleShortVersionString</key><string>2024.3.2</string>',
+          '</dict></plist>',
+        ].join('\n'),
+      )
+      fs.mkdirSync(path.join(home, 'Applications', 'Firefox.app', 'Contents'), {
+        recursive: true,
+      })
+
+      const status = injectStatus(home, backup)
+      const byId = Object.fromEntries(status.map((s) => [s.id, s]))
+      assert.equal(byId.cursor?.available, true)
+      assert.match(byId.cursor?.detail ?? '', /создадим при прописке/)
+      assert.equal(byId.webstorm?.available, true)
+      assert.match(byId.webstorm?.detail ?? '', /создадим при прописке/)
+      assert.equal(byId.firefox?.available, true)
+      assert.match(byId.firefox?.detail ?? '', /откройте Firefox/)
+
+      const ports = { socksPort: 10808, httpPort: 10809 }
+      const cursorOnly = applyInject(['cursor'], ports, home, backup)
+      assert.ok(cursorOnly.results[0]?.ok, JSON.stringify(cursorOnly.results))
+      const cursorFile = path.join(
+        home,
+        'Library/Application Support/Cursor/User/settings.json',
+      )
+      assert.ok(fs.existsSync(cursorFile))
+      assert.equal(
+        (JSON.parse(fs.readFileSync(cursorFile, 'utf8')) as Record<string, unknown>)[
+          'http.proxy'
+        ],
+        'socks5://127.0.0.1:10808',
+      )
+
+      assert.equal(
+        readBundleShortVersionSync(
+          path.join(home, 'Applications', 'WebStorm.app'),
+        ),
+        '2024.3.2',
+      )
+      const wsPaths = webstormProxyPathsFromBundles(home)
+      assert.deepEqual(wsPaths, [
+        path.join(
+          home,
+          'Library/Application Support/JetBrains/WebStorm2024.3/options/proxy.settings.xml',
+        ),
+      ])
+      const wsApply = applyInject(['webstorm'], ports, home, backup)
+      assert.ok(wsApply.results[0]?.ok, JSON.stringify(wsApply.results))
+      assert.ok(fs.existsSync(wsPaths[0]))
+
+      const ffApply = applyInject(['firefox'], ports, home, backup)
+      assert.equal(ffApply.results[0]?.ok, false)
+      assert.match(ffApply.results[0]?.message ?? '', /откройте Firefox/i)
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
   }
 
   // AbortSignal: one listener for many concurrent probes (no MaxListenersExceeded)

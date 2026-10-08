@@ -5,19 +5,49 @@ import { isIpv4 } from './types'
 
 const execFileAsync = promisify(execFile)
 
-/** Current Wi‑Fi SSID on macOS, or null if not on Wi‑Fi. */
-export async function currentWifiSsid(): Promise<string | null> {
-  for (const iface of ['en0', 'en1', 'en2']) {
-    try {
-      const { stdout } = await execFileAsync('networksetup', [
-        '-getairportnetwork',
-        iface,
-      ])
-      const m = /^Current Wi-Fi Network:\s*(.+)$/i.exec(stdout.trim())
-      if (m?.[1]) return m[1].trim()
-    } catch {
-      // wrong iface
+const FALLBACK_WIFI_IFACES = ['en0', 'en1', 'en2']
+
+/** Hardware ports labeled Wi‑Fi / AirPort from `networksetup -listallhardwareports`. */
+export async function wifiHardwareDevices(): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync('networksetup', ['-listallhardwareports'])
+    const devices: string[] = []
+    const blocks = stdout.split(/\n\n+/)
+    for (const block of blocks) {
+      const isWifi = /Hardware Port:\s*(Wi-?Fi|AirPort)\b/i.test(block)
+      if (!isWifi) continue
+      const m = /^Device:\s*(\S+)/m.exec(block)
+      if (m?.[1]) devices.push(m[1])
     }
+    return devices.length > 0 ? devices : [...FALLBACK_WIFI_IFACES]
+  } catch {
+    return [...FALLBACK_WIFI_IFACES]
+  }
+}
+
+async function ssidFromIface(iface: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('networksetup', [
+      '-getairportnetwork',
+      iface,
+    ])
+    const m = /^Current Wi-Fi Network:\s*(.+)$/i.exec(stdout.trim())
+    if (m?.[1]) return m[1].trim()
+  } catch {
+    // wrong iface / not associated
+  }
+  return null
+}
+
+/** Current Wi‑Fi SSID on macOS, or null if not on Wi‑Fi / Location denied. */
+export async function currentWifiSsid(): Promise<string | null> {
+  const ifaces = await wifiHardwareDevices()
+  const seen = new Set<string>()
+  for (const iface of ifaces) {
+    if (seen.has(iface)) continue
+    seen.add(iface)
+    const ssid = await ssidFromIface(iface)
+    if (ssid) return ssid
   }
   return null
 }

@@ -4,6 +4,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import {
+  cursorAppBundles,
+  firefoxAppBundles,
+  webstormAppBundles,
+} from './appPaths'
 import type { InjectTarget } from './inject'
 
 /** Real .app icons for inject targets; missing id ⇒ renderer falls back to a generic icon. */
@@ -12,22 +17,6 @@ export type InjectIconMap = Partial<Record<InjectTarget, string>>
 const execFileAsync = promisify(execFile)
 const cache = new Map<string, string | null>()
 let tmpSeq = 0
-
-function appBundles(namePattern: RegExp): string[] {
-  const out: string[] = []
-  for (const dir of ['/Applications', path.join(os.homedir(), 'Applications')]) {
-    let names: string[] = []
-    try {
-      names = fs.readdirSync(dir)
-    } catch {
-      continue
-    }
-    for (const name of names) {
-      if (namePattern.test(name)) out.push(path.join(dir, name))
-    }
-  }
-  return out
-}
 
 /** CFBundleIconFile from a bundle Info.plist; handles binary plists. */
 async function bundleIconName(bundlePath: string): Promise<string | null> {
@@ -96,9 +85,9 @@ async function iconFor(bundlePath: string): Promise<string | null> {
 /** Resolve real macOS bundle icons (data URLs) for the inject target list. */
 export async function resolveInjectIcons(): Promise<InjectIconMap> {
   const bundles: Record<InjectTarget, string[]> = {
-    cursor: appBundles(/^Cursor\.app$/),
-    webstorm: appBundles(/^WebStorm.*\.app$/),
-    firefox: appBundles(/^Firefox\.app$/),
+    cursor: cursorAppBundles(),
+    webstorm: webstormAppBundles(),
+    firefox: firefoxAppBundles(),
   }
   const out: InjectIconMap = {}
   await Promise.all(
