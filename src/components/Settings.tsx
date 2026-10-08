@@ -179,22 +179,12 @@ export function Settings({ state, onState, onShowWizard }: Props) {
             <h1 className="text-xl font-semibold tracking-tight text-white">Happ Bridge</h1>
             <p className="text-xs text-zinc-500">Мост к Happ SOCKS5/HTTP</p>
           </div>
-          <div className="flex items-center gap-3">
-            <div
-              className={`h-2.5 w-2.5 rounded-full ${
-                connected ? 'bg-emerald-400' : state.settings.enabled ? 'bg-amber-400' : 'bg-zinc-500'
-              }`}
-              title={connected ? 'Подключено' : state.settings.enabled ? 'Поиск' : 'Выключено'}
-            />
-            <button
-              type="button"
-              onClick={() => void window.happBridge.exportDebugInfo()}
-              className="flex items-center gap-1 text-xs text-zinc-600 transition-colors hover:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
-              title="Копировать состояние в буфер для поддержки"
-            >
-              <Copy size={12} />
-            </button>
-          </div>
+          <div
+            className={`h-2.5 w-2.5 rounded-full ${
+              connected ? 'bg-emerald-400' : state.settings.enabled ? 'bg-amber-400' : 'bg-zinc-500'
+            }`}
+            title={connected ? 'Подключено' : state.settings.enabled ? 'Поиск' : 'Выключено'}
+          />
         </header>
 
         <Card title="Соединение">

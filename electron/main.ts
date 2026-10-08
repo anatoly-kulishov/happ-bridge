@@ -298,62 +298,6 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
     return text
   })
 
-  ipcMain.handle('bridge:exportDebugInfo', async () => {
-    const os = await import('node:os')
-    const s = session!.getState()
-    const stateForDebug = {
-      app: {
-        version: app.getVersion(),
-        platform: process.platform,
-        arch: process.arch,
-        electron: process.versions.electron,
-        node: process.versions.node,
-        chrome: process.versions.chrome,
-      },
-      runtime: {
-        macOS: os.release(),
-        uptime: os.uptime(),
-        totalMemory: os.totalmem(),
-        freeMemory: os.freemem(),
-        cpus: os.cpus().length,
-        networkInterfaces: os.networkInterfaces(),
-      },
-      bridge: {
-        status: s.status,
-        phoneIp: s.phoneIp,
-        peers: s.peers,
-        socksLocal: s.socksLocal,
-        httpLocal: s.httpLocal,
-        enabled: s.settings.enabled,
-        wizardDone: s.settings.wizardDone,
-        paused: s.paused,
-        error: s.error,
-        wifiSsid: s.wifiSsid,
-        isHomeNetwork: s.isHomeNetwork,
-        lanPasswordSet: s.lanPasswordSet,
-        scan: s.scan,
-      },
-      settings: {
-        socksPort: s.settings.socksPort,
-        httpPort: s.settings.httpPort,
-        manualIp: s.settings.manualIp,
-        lastPhoneIp: s.settings.lastPhoneIp,
-        recentPhoneIps: s.settings.recentPhoneIps,
-        ssidPeers: s.settings.ssidPeers,
-        homeSsids: s.settings.homeSsids,
-        openAtLogin: s.settings.openAtLogin,
-      },
-      relay: {
-        listening: session!.getState().status === 'connected',
-      },
-      diagnostics: s.diagnostics,
-      update: s.update,
-    }
-    const text = JSON.stringify(stateForDebug, null, 2)
-    clipboard.writeText(text)
-    return text
-  })
-
   ipcMain.handle('bridge:disconnect', async () => session!.disconnect())
 
   ipcMain.handle('bridge:setEnabled', async (_e, enabled: boolean) => {
