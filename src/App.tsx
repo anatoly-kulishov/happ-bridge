@@ -1,3 +1,4 @@
+import { Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import type { BridgeState } from '../electron/types'
 import { Wizard } from './components/Wizard'
@@ -18,7 +19,8 @@ export default function App() {
 
   if (!state) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-zinc-400">
+      <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-zinc-400">
+        <Loader2 size={20} className="animate-spin text-sky-400" aria-hidden />
         Загрузка…
       </div>
     )

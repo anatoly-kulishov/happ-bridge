@@ -6,7 +6,7 @@ Set Telegram, Cursor, Firefox, and WebStorm to `127.0.0.1` once. When the phone 
 
 [Русский](#happ-bridge-рус) · [English](#happ-bridge-en) · [Download](#install) · [Site](https://anatoly-kulishov.github.io/happ-bridge/) · [Changelog](docs/CHANGELOG.md)
 
-**Текущая версия:** 1.1.7
+**Текущая версия:** 1.1.8
 
 ---
 
@@ -30,11 +30,13 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 - macOS (Apple Silicon) + телефон с Happ и включённым **«Разрешить LAN подключение»**
 - кто устал обновлять прокси в Telegram / Cursor / IDE после смены Wi‑Fi
 
-### Возможности (1.1.7)
+### Возможности (1.1.8)
 
 - автопоиск Happ в Wi‑Fi; если телефонов несколько - список и выбор вручную
+- устойчивый поиск после перезагрузки Mac (ожидание Wi‑Fi, мягкий backoff, подсказка Local Network в диагностике)
 - один тумблер **«Мост к Happ»** - включение/отключение без дублирующих кнопок
 - **реальные иконки** установленных Cursor / WebStorm / Firefox в списке прописки
+- прописка SOCKS видит установленные `.app`, даже если конфиг Application Support ещё не создан
 - **автообновление** через GitHub Releases (zip + `latest-mac.yml`)
 - локальный TCP-relay только на `127.0.0.1` (соседи по Wi‑Fi не видят прокси)
 - опциональный **логин/пароль Happ LAN** - проверка при поиске и прописка в приложения
@@ -54,7 +56,7 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 
 #### Готовый .dmg
 
-1. Скачайте `.dmg` с [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases) (файл вида `Happ Bridge-1.1.7-arm64.dmg`).
+1. Скачайте `.dmg` с [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases) (файл вида `Happ Bridge-1.1.8-arm64.dmg`).
 2. Откройте диск и дважды нажмите **Install Happ Bridge.command** → «Установить».
 3. Если macOS блокирует **установщик**, в Терминале:
 
@@ -82,7 +84,7 @@ npm test
 npm run dist
 ```
 
-Готовый файл: `release/Happ Bridge-1.1.7-arm64.dmg`
+Готовый файл: `release/Happ Bridge-1.1.8-arm64.dmg`
 
 Разработка: `npm run dev`
 
@@ -99,9 +101,9 @@ npm run dist
 - **Локальный релей.** Два слушателя только на `127.0.0.1`: SOCKS5 `:10808` и HTTP `:10809`; оба форвардят TCP в SOCKS5 телефона по LAN. Системный прокси macOS не меняется.
 - **Поиск без broadcast.** Никакого mDNS/ARP/ICMP: только TCP-проба SOCKS5-порта. Кандидаты: ручной IP → IP, запомненный для текущего Wi-Fi (SSID) → недавние IP → последний IP → вся `/24` подсети (приоритет адресов `.2`–`.80` как типичные DHCP-аренды).
 - **«Пинг» = рукопожатие SOCKS5.** Клиент шлёт greeting (`05 01 00`, с паролем `05 01 02`); принимается только `VER=5` + метод no-auth/user-pass. Ответ `0xff` или мусор — не Happ: чужой открытый SOCKS не подставится. С включённым паролем требуется успешная user/pass-авторизация.
-- **Сканирование.** До 64 параллельных проб, таймаут 350 мс (500 мс с паролем). Полный скан собирает всех пиров в список «Телефоны в сети», быстрый реконнект — стоп на первом попадании. Прогресс `N/254` виден в UI.
+- **Сканирование.** До 64 параллельных проб, таймаут 350 мс (500 мс с паролем; ~800 мс после старта/пробуждения). Перед первым поиском после логина ждём появления локального IPv4 (холодный старт Wi‑Fi). Полный скан собирает всех пиров в список «Телефоны в сети», быстрый реконнект — стоп на первом попадании. Прогресс `N/254` виден в UI.
 - **Выбор телефона.** Ручной IP → запомненный по SSID → единственный найденный → текущий. Если найдено несколько и предпочтения нет — мост ждёт выбора в списке, а не гадает.
-- **Watchdog.** В подключённом состоянии каждые ~8 с health-check той же SOCKS5-пробой; 3 промаха подряд — переподключение. Смена сети (fingerprint локальных IP), sleep/wake — мгновенный реконнект; при недоступности телефона — бэкофф до 2 мин.
+- **Watchdog.** В подключённом состоянии каждые ~8 с health-check той же SOCKS5-пробой; 3 промаха подряд — переподключение. Смена сети (fingerprint локальных IP), sleep/wake — реконнект после короткого ожидания Wi‑Fi; при недоступности телефона — бэкофф (мягче, пока есть LAN IP; иначе до 2 мин).
 - **Память.** Успешный IP привязывается к SSID и в список недавних: на своей Wi-Fi коннект мгновенный, без скана подсети.
 - **Ограничения.** Только `/24` и IPv4; телефон обязан отвечать по TCP (спящий/выключенный не найдётся — укажите IP вручную в настройках).
 
@@ -136,7 +138,7 @@ Electron · Vite · React · TypeScript · Tailwind
 
 Stable localhost proxy bridge to a phone running Happ on your LAN. Stop editing proxy IPs in Telegram, Cursor, Firefox, and WebStorm every time DHCP moves your phone.
 
-**Version 1.1.7** - redesigned UI, single bridge toggle, real app icons for Cursor / WebStorm / Firefox, auto-update (zip + latest-mac.yml), localized relay errors.
+**Version 1.1.8** - macOS-upgrade hardening: cold-boot discovery, inject finds installed apps, Local Network diagnostics hint.
 
 **Version 1.1.6** - bridge on/off, SOCKS port fix to Happ, Keychain LAN password, peer-per-SSID, Gatekeeper-friendly DMG.
 

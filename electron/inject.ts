@@ -1,8 +1,14 @@
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import {
+  cursorAppBundles,
+  firefoxAppBundles,
+  webstormAppBundles,
+  webstormConfigDirFromVersion,
+} from './appPaths'
 import { socksProxyUrl } from './presets'
 
 const execFileAsync = promisify(execFile)
@@ -115,45 +121,101 @@ export function injectStatus(
   backupPath?: string,
 ): InjectTargetInfo[] {
   const backups = loadBackups(backupPath)
-  const cursorPath = cursorSettingsPath(homeDir)
-  const wsPaths = webstormProxyPaths(homeDir)
-  const ffPath = firefoxUserJsPath(homeDir)
 
+  // Each target is independent: one TCC/EPERM (e.g. Firefox profiles.ini)
+  // must not blank the whole list as «не найдено».
   return [
-    {
-      id: 'cursor',
-      label: 'Cursor',
-      available: fs.existsSync(path.dirname(cursorPath)),
-      applied: Boolean(backups.cursor),
-      path: cursorPath,
-      detail: fs.existsSync(cursorPath)
-        ? cursorPath
-        : fs.existsSync(path.dirname(cursorPath))
-          ? 'settings.json ещё нет — создадим при прописке'
-          : 'Cursor не найден',
-    },
-    {
-      id: 'webstorm',
-      label: 'WebStorm',
-      available: wsPaths.length > 0,
-      applied: Boolean(backups.webstorm?.length),
-      path: wsPaths[0] ?? null,
-      detail:
-        wsPaths.length > 0
-          ? wsPaths.length === 1
-            ? wsPaths[0]
-            : `${wsPaths.length} версий: ${wsPaths.map((p) => path.basename(path.dirname(path.dirname(p)))).join(', ')}`
-          : 'WebStorm не найден',
-    },
-    {
+    cursorInjectInfo(homeDir, backups),
+    webstormInjectInfo(homeDir, backups),
+    firefoxInjectInfo(homeDir, backups),
+  ]
+}
+
+function cursorInjectInfo(homeDir: string, backups: BackupStore): InjectTargetInfo {
+  const cursorPath = cursorSettingsPath(homeDir)
+  const cursorUserDir = path.dirname(cursorPath)
+  const cursorHasConfig = safeExists(cursorUserDir)
+  const cursorHasApp = cursorAppBundles(homeDir).length > 0
+  return {
+    id: 'cursor',
+    label: 'Cursor',
+    available: cursorHasConfig || cursorHasApp,
+    applied: Boolean(backups.cursor),
+    path: cursorPath,
+    detail: safeExists(cursorPath)
+      ? cursorPath
+      : cursorHasConfig
+        ? 'settings.json ещё нет — создадим при прописке'
+        : cursorHasApp
+          ? 'приложение найдено — конфиг создадим при прописке'
+          : 'Cursor не установлен',
+  }
+}
+
+function webstormInjectInfo(homeDir: string, backups: BackupStore): InjectTargetInfo {
+  const wsPaths = webstormProxyPaths(homeDir)
+  const wsHasApp = webstormAppBundles(homeDir).length > 0
+  return {
+    id: 'webstorm',
+    label: 'WebStorm',
+    available: wsPaths.length > 0 || wsHasApp,
+    applied: Boolean(backups.webstorm?.length),
+    path: wsPaths[0] ?? null,
+    detail:
+      wsPaths.length > 0
+        ? wsPaths.length === 1
+          ? wsPaths[0]
+          : `${wsPaths.length} версий: ${wsPaths.map((p) => path.basename(path.dirname(path.dirname(p)))).join(', ')}`
+        : wsHasApp
+          ? 'приложение найдено — конфиг создадим при прописке'
+          : 'WebStorm не установлен',
+  }
+}
+
+function firefoxInjectInfo(homeDir: string, backups: BackupStore): InjectTargetInfo {
+  const ffHasApp = firefoxAppBundles(homeDir).length > 0
+  const profile = safeFirefoxProfile(homeDir)
+  if (profile.kind === 'ok') {
+    const ffPath = path.join(profile.dir, 'user.js')
+    return {
       id: 'firefox',
       label: 'Firefox',
-      available: Boolean(ffPath),
+      available: true,
       applied: Boolean(backups.firefox),
       path: ffPath,
-      detail: ffPath ?? 'Профиль Firefox не найден',
-    },
-  ]
+      detail: ffPath,
+    }
+  }
+  if (profile.kind === 'denied') {
+    return {
+      id: 'firefox',
+      label: 'Firefox',
+      available: ffHasApp,
+      applied: Boolean(backups.firefox),
+      path: null,
+      detail: ffHasApp
+        ? 'нет доступа к профилю — включите Полный доступ к диску для Happ Bridge'
+        : 'Firefox: нет доступа к профилю (Полный доступ к диску)',
+    }
+  }
+  return {
+    id: 'firefox',
+    label: 'Firefox',
+    available: ffHasApp,
+    applied: Boolean(backups.firefox),
+    path: null,
+    detail: ffHasApp
+      ? 'откройте Firefox один раз, чтобы создать профиль'
+      : 'Firefox не установлен',
+  }
+}
+
+function safeExists(p: string): boolean {
+  try {
+    return fs.existsSync(p)
+  } catch {
+    return false
+  }
 }
 
 export function applyInject(
@@ -181,7 +243,11 @@ export function applyInject(
       results.push({
         id,
         ok: false,
-        message: err instanceof Error ? err.message : String(err),
+        message: isPermissionDeniedError(err)
+          ? permissionDeniedMessage(id === 'cursor' ? 'Cursor' : id === 'webstorm' ? 'WebStorm' : 'Firefox')
+          : err instanceof Error
+            ? err.message
+            : String(err),
       })
     }
   }
@@ -215,7 +281,11 @@ export function revertInject(
       results.push({
         id,
         ok: false,
-        message: err instanceof Error ? err.message : String(err),
+        message: isPermissionDeniedError(err)
+          ? permissionDeniedMessage(id === 'cursor' ? 'Cursor' : id === 'webstorm' ? 'WebStorm' : 'Firefox')
+          : err instanceof Error
+            ? err.message
+            : String(err),
       })
     }
   }
@@ -427,8 +497,9 @@ function applyCursor(
 ): InjectActionResult {
   const filePath = cursorSettingsPath(homeDir)
   const dir = path.dirname(filePath)
-  if (!fs.existsSync(dir)) {
-    return { id: 'cursor', ok: false, message: 'Папка Cursor не найдена' }
+  const hasApp = cursorAppBundles(homeDir).length > 0
+  if (!fs.existsSync(dir) && !hasApp) {
+    return { id: 'cursor', ok: false, message: 'Cursor не установлен' }
   }
 
   const existed = fs.existsSync(filePath)
@@ -486,9 +557,20 @@ function applyWebstorm(
   homeDir: string,
   backups: BackupStore,
 ): InjectActionResult {
-  const paths = webstormProxyPaths(homeDir)
+  let paths = webstormProxyPaths(homeDir)
   if (paths.length === 0) {
-    return { id: 'webstorm', ok: false, message: 'WebStorm не найден' }
+    const created = webstormProxyPathsFromBundles(homeDir)
+    if (created.length === 0) {
+      const hasApp = webstormAppBundles(homeDir).length > 0
+      return {
+        id: 'webstorm',
+        ok: false,
+        message: hasApp
+          ? 'WebStorm установлен, но не удалось определить версию конфига — откройте IDE один раз'
+          : 'WebStorm не установлен',
+      }
+    }
+    paths = created
   }
 
   if (!backups.webstorm) {
@@ -543,7 +625,18 @@ function applyFirefox(
   const userJs = firefoxUserJsPath(homeDir)
   const prefsJs = firefoxPrefsJsPath(homeDir)
   if (!userJs || !prefsJs) {
-    return { id: 'firefox', ok: false, message: 'Профиль Firefox не найден' }
+    const profile = safeFirefoxProfile(homeDir)
+    if (profile.kind === 'denied') {
+      return { id: 'firefox', ok: false, message: permissionDeniedMessage('Firefox') }
+    }
+    const hasApp = firefoxAppBundles(homeDir).length > 0
+    return {
+      id: 'firefox',
+      ok: false,
+      message: hasApp
+        ? 'Откройте Firefox один раз, чтобы создать профиль, затем повторите прописку'
+        : 'Firefox не установлен',
+    }
   }
 
   const existed = fs.existsSync(userJs)
@@ -827,15 +920,61 @@ function jetbrainsRoot(homeDir: string): string {
 
 function webstormProxyPaths(homeDir: string): string[] {
   const root = jetbrainsRoot(homeDir)
-  if (!fs.existsSync(root)) return []
+  if (!safeExists(root)) return []
 
-  const dirs = fs
-    .readdirSync(root)
+  let names: string[] = []
+  try {
+    names = fs.readdirSync(root)
+  } catch {
+    return []
+  }
+
+  const dirs = names
     .filter((name) => /^WebStorm\d/.test(name) && !/backup/i.test(name))
     .sort(compareWebstormVersion)
     .reverse()
 
   return dirs.map((name) => path.join(root, name, 'options', 'proxy.settings.xml'))
+}
+
+/** When no JetBrains config yet, derive proxy.settings.xml paths from installed .app versions. */
+export function webstormProxyPathsFromBundles(homeDir: string): string[] {
+  const root = jetbrainsRoot(homeDir)
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const bundle of webstormAppBundles(homeDir)) {
+    const version = readBundleShortVersionSync(bundle)
+    if (!version) continue
+    const dirName = webstormConfigDirFromVersion(version)
+    if (!dirName || seen.has(dirName)) continue
+    seen.add(dirName)
+    out.push(path.join(root, dirName, 'options', 'proxy.settings.xml'))
+  }
+  return out
+}
+
+/** CFBundleShortVersionString from Info.plist (binary-plist safe via defaults). */
+export function readBundleShortVersionSync(bundlePath: string): string | null {
+  const infoDir = path.join(bundlePath, 'Contents', 'Info')
+  try {
+    const stdout = execFileSync(
+      'defaults',
+      ['read', infoDir, 'CFBundleShortVersionString'],
+      { encoding: 'utf8' },
+    )
+    const v = stdout.trim()
+    return v || null
+  } catch {
+    // Fallback: plain-text Info.plist
+    try {
+      const plist = fs.readFileSync(path.join(bundlePath, 'Contents', 'Info.plist'), 'utf8')
+      const m =
+        /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/.exec(plist)
+      return m?.[1]?.trim() || null
+    } catch {
+      return null
+    }
+  }
 }
 
 function compareWebstormVersion(a: string, b: string): number {
@@ -853,11 +992,29 @@ function firefoxRoot(homeDir: string): string {
   return path.join(homeDir, 'Library', 'Application Support', 'Firefox')
 }
 
-function firefoxProfileDir(homeDir: string): string | null {
+type FirefoxProfileResult =
+  | { kind: 'ok'; dir: string }
+  | { kind: 'missing' }
+  | { kind: 'denied' }
+
+/** Resolve default Firefox profile; never throws (TCC EPERM → denied). */
+function safeFirefoxProfile(homeDir: string): FirefoxProfileResult {
   const root = firefoxRoot(homeDir)
   const iniPath = path.join(root, 'profiles.ini')
-  if (!fs.existsSync(iniPath)) return null
-  return parseFirefoxDefaultProfile(fs.readFileSync(iniPath, 'utf8'), root)
+  try {
+    if (!fs.existsSync(iniPath)) return { kind: 'missing' }
+    const dir = parseFirefoxDefaultProfile(fs.readFileSync(iniPath, 'utf8'), root)
+    return dir ? { kind: 'ok', dir } : { kind: 'missing' }
+  } catch (err) {
+    const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : ''
+    if (code === 'EPERM' || code === 'EACCES') return { kind: 'denied' }
+    return { kind: 'missing' }
+  }
+}
+
+function firefoxProfileDir(homeDir: string): string | null {
+  const r = safeFirefoxProfile(homeDir)
+  return r.kind === 'ok' ? r.dir : null
 }
 
 function firefoxUserJsPath(homeDir: string): string | null {
@@ -868,6 +1025,15 @@ function firefoxUserJsPath(homeDir: string): string | null {
 function firefoxPrefsJsPath(homeDir: string): string | null {
   const profile = firefoxProfileDir(homeDir)
   return profile ? path.join(profile, 'prefs.js') : null
+}
+
+export function isPermissionDeniedError(err: unknown): boolean {
+  const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : ''
+  return code === 'EPERM' || code === 'EACCES'
+}
+
+export function permissionDeniedMessage(appLabel: string): string {
+  return `${appLabel}: нет доступа к файлам. Системные настройки → Конфиденциальность и безопасность → Полный доступ к диску → включите Happ Bridge (или Electron при разработке), затем перезапустите.`
 }
 
 function readJsonObject(filePath: string): Record<string, unknown> {

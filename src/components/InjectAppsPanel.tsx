@@ -1,10 +1,18 @@
-import { AppWindow, CheckCircle2, Code2, MousePointer2, RefreshCcw } from 'lucide-react'
+import {
+  AppWindow,
+  CheckCircle2,
+  Code2,
+  Loader2,
+  MousePointer2,
+  RefreshCcw,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type {
   InjectTarget,
   InjectTargetInfo,
 } from '../../electron/inject'
 import type { BridgeState } from '../../electron/types'
+import { BusyIcon } from './BusyIcon'
 
 const ALL: InjectTarget[] = ['cursor', 'webstorm', 'firefox']
 
@@ -17,6 +25,16 @@ const targetMeta: Record<
   firefox: { label: 'Firefox', icon: AppWindow },
 }
 
+/** Short status when the target cannot be selected. */
+function shortUnavailable(detail?: string): string {
+  if (!detail) return 'не найдено'
+  if (/нет доступа/i.test(detail)) return 'нет доступа'
+  if (/откройте Firefox/i.test(detail)) return 'нет профиля'
+  if (/не установлен/i.test(detail)) return 'не установлено'
+  if (/не найден/i.test(detail)) return 'не найдено'
+  return 'не найдено'
+}
+
 type Props = {
   onState: (s: BridgeState) => void
   /** When the panel is wrapped in a card with its own title, hide the internal header. */
@@ -27,10 +45,25 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
   const [targets, setTargets] = useState<InjectTarget[]>([])
   const [status, setStatus] = useState<InjectTargetInfo[]>([])
   const [busy, setBusy] = useState(false)
+  const [busyMode, setBusyMode] = useState<'apply' | 'revert' | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
   const [log, setLog] = useState<string | null>(null)
 
   const refresh = async () => {
-    setStatus(await window.happBridge.injectStatus())
+    setRefreshing(true)
+    try {
+      setStatus(await window.happBridge.injectStatus())
+      setLog(null)
+    } catch (err) {
+      setStatus([])
+      setLog(
+        err instanceof Error
+          ? `Не удалось проверить приложения: ${err.message}`
+          : 'Не удалось проверить приложения',
+      )
+    } finally {
+      setRefreshing(false)
+    }
   }
 
   useEffect(() => {
@@ -49,6 +82,7 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
       return
     }
     setBusy(true)
+    setBusyMode(mode)
     setLog(null)
     try {
       const result =
@@ -78,6 +112,7 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
       setLog(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(false)
+      setBusyMode(null)
     }
   }
 
@@ -94,12 +129,12 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
           </h2>
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || refreshing}
             onClick={() => void refresh()}
             className="flex h-7 items-center gap-1 rounded-md border border-zinc-700 px-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
           >
-            <RefreshCcw size={13} />
-            Обновить статус
+            <BusyIcon busy={refreshing} icon={RefreshCcw} size={13} />
+            {refreshing ? 'Обновляю…' : 'Обновить статус'}
           </button>
         </div>
       )}
@@ -157,8 +192,13 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
                     прописано
                   </span>
                 )}
+                {available && /нет доступа/i.test(info?.detail ?? '') && (
+                  <span className="shrink-0 text-xs text-amber-500">нет доступа</span>
+                )}
                 {!available && (
-                  <span className="shrink-0 text-xs text-zinc-600">не найдено</span>
+                  <span className="shrink-0 text-xs text-zinc-600">
+                    {shortUnavailable(info?.detail)}
+                  </span>
                 )}
               </label>
             </li>
@@ -170,18 +210,24 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
         <button
           type="button"
           disabled={busy}
-          className="btn-primary flex-1"
+          className="btn-primary flex flex-1 items-center justify-center gap-1.5"
           onClick={() => void run('apply')}
         >
-          {busy ? '…' : 'Прописать'}
+          {busyMode === 'apply' && (
+            <Loader2 size={14} className="animate-spin" aria-hidden />
+          )}
+          {busyMode === 'apply' ? 'Прописываю…' : 'Прописать'}
         </button>
         <button
           type="button"
           disabled={busy}
-          className="btn-secondary"
+          className="btn-secondary flex items-center justify-center gap-1.5"
           onClick={() => void run('revert')}
         >
-          Откатить
+          {busyMode === 'revert' && (
+            <Loader2 size={14} className="animate-spin" aria-hidden />
+          )}
+          {busyMode === 'revert' ? 'Откатываю…' : 'Откатить'}
         </button>
       </div>
 

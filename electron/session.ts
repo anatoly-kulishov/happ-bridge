@@ -3,8 +3,10 @@ import { runDiagnostics } from './diagnostics'
 import {
   chooseDiscoveredPeer,
   discoverPhones,
+  localIpv4Addresses,
   networkFingerprint,
   preferredIpsFromSettings,
+  waitForLocalIpv4,
 } from './discover'
 import { ProxyRelay, checkProxyAuth, probeSocks5 } from './relay'
 import { loadSettings, saveSettings } from './store'
@@ -45,8 +47,13 @@ type SessionHooks = {
 
 const BASE_WATCH_MS = 8000
 const MAX_IDLE_MS = 120_000
+/** Cap backoff while LAN IP is up but phone still missing (TCC / phone waking). */
+const SOFT_IDLE_MS = 15_000
 const PROBE_FAILS_NEEDED = 3
 const TRAFFIC_FRESH_MS = 15_000
+const COLD_PROBE_MS = 800
+const STARTUP_NET_WAIT_MS = 25_000
+const RESUME_NET_WAIT_MS = 10_000
 
 /** Human-readable Russian message for known Node error codes; unknown ⇒ raw message. */
 function presentError(err: unknown): string {
@@ -308,13 +315,21 @@ export class BridgeSession {
     this.relay.dropConnections()
   }
 
-  /** Wake: reconnect immediately instead of waiting for the watch loop. */
+  /** Wake: wait briefly for Wi‑Fi, then reconnect instead of waiting for the watch loop. */
   onResume(): void {
     if (!this.settings.enabled || this.holdOff || this.disposed) return
     this.idleDelayMs = BASE_WATCH_MS
     this.idleFailStreak = 0
     this.probeFails = 0
-    void this.connect('network-change')
+    void (async () => {
+      await waitForLocalIpv4({
+        timeoutMs: RESUME_NET_WAIT_MS,
+        pollMs: 400,
+        signal: this.watchAbort?.signal,
+      })
+      if (this.disposed || this.holdOff || !this.settings.enabled) return
+      await this.connect('network-change')
+    })()
   }
 
   async updateSettings(patch: Partial<AppSettings>): Promise<BridgeState> {
@@ -431,11 +446,23 @@ export class BridgeSession {
     this.discoverAbort = new AbortController()
     this.errorMessage = null
     this.setStatus('searching')
+
+    if (reason === 'startup') {
+      await waitForLocalIpv4({
+        timeoutMs: STARTUP_NET_WAIT_MS,
+        pollMs: 500,
+        signal: this.discoverAbort.signal,
+      })
+      if (this.discoverAbort.signal.aborted) return false
+    }
+
     await this.refreshWifi()
 
     try {
       const auth = socksAuthFromSettings(this.settings)
       const preferredIps = preferredIpsFromSettings(this.settings, this.wifiSsid)
+      const coldProbe =
+        reason === 'startup' || reason === 'network-change' || reason === 'watchdog-lost'
 
       this.scanProgress = null
       const found = await discoverPhones({
@@ -444,6 +471,7 @@ export class BridgeSession {
         manualIp: this.settings.manualIp,
         signal: this.discoverAbort.signal,
         auth,
+        timeoutMs: coldProbe ? COLD_PROBE_MS : undefined,
         onProgress: (done, total) => {
           this.scanProgress = { done, total }
           if (done % 16 === 0) this.hooks.onChange()
@@ -459,7 +487,9 @@ export class BridgeSession {
         if (reason === 'user' || reason === 'watchdog-lost' || reason === 'network-change') {
           this.notifyFail(reason)
         }
-        if (reason === 'watchdog-idle') this.bumpIdleBackoff()
+        if (reason === 'watchdog-idle' || reason === 'startup') {
+          this.bumpIdleBackoff(localIpv4Addresses().length > 0)
+        }
         return false
       }
 
@@ -591,10 +621,12 @@ export class BridgeSession {
     await this.connect('watchdog-lost')
   }
 
-  private bumpIdleBackoff(): void {
+  /** Soft cap when LAN is up (phone/TCC) so post-reboot retries stay responsive. */
+  private bumpIdleBackoff(lanUp = false): void {
     this.idleFailStreak += 1
+    const cap = lanUp ? SOFT_IDLE_MS : MAX_IDLE_MS
     this.idleDelayMs = Math.min(
-      MAX_IDLE_MS,
+      cap,
       BASE_WATCH_MS * 2 ** Math.min(this.idleFailStreak, 4),
     )
   }
