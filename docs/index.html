@@ -6,13 +6,13 @@
     <title>Happ Bridge - стабильный прокси к Happ на телефоне для macOS</title>
     <meta
       name="description"
-      content="Happ Bridge 1.1.7 - menu bar для macOS. SOCKS5/HTTP 127.0.0.1 для Telegram, Cursor, Firefox и WebStorm через Happ на iPhone."
+      content="Happ Bridge 1.1.9 - menu bar для macOS. SOCKS5/HTTP 127.0.0.1 для Telegram, Cursor, Firefox и WebStorm через Happ на iPhone."
     />
     <meta name="robots" content="index,follow" />
     <meta name="theme-color" content="#090b10" />
     <link rel="canonical" href="https://anatoly-kulishov.github.io/happ-bridge/" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Happ Bridge 1.1.7 - стабильный прокси к Happ на macOS" />
+    <meta property="og:title" content="Happ Bridge 1.1.9 - стабильный прокси к Happ на macOS" />
     <meta
       property="og:description"
       content="Один раз настройте 127.0.0.1:10808 / 10809. Happ Bridge сам находит телефон в Wi-Fi."
@@ -841,7 +841,7 @@
           </p>
           <div class="actions">
             <a class="btn btn-primary" href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest"
-              >Скачать .dmg 1.1.7</a
+              >Скачать .dmg 1.1.9</a
             >
             <a class="btn btn-ghost" href="#install">Как установить</a>
           </div>
@@ -893,7 +893,18 @@
             </li>
             <li>
               <h3>Прописка вручную</h3>
-              <p>Cursor, WebStorm, Firefox: «Прописать» и предложение перезапустить. Статус прописки можно обновить.</p>
+              <p>
+                Cursor, WebStorm, Firefox: «Прописать» и предложение перезапустить. Видит
+                установленные .app даже без конфига; после обновления macOS может понадобиться
+                Полный доступ к диску для Firefox.
+              </p>
+            </li>
+            <li>
+              <h3>После перезагрузки Mac</h3>
+              <p>
+                Ждёт появления Wi‑Fi перед первым поиском, мягче повторяет попытки. В диагностике —
+                подсказка про доступ к локальной сети.
+              </p>
             </li>
             <li>
               <h3>Пароль LAN · Keychain</h3>
@@ -966,7 +977,8 @@
             <h3>Watchdog и память сетей</h3>
             <p>
               Health-check каждые ~8 с, 3 промаха — переподключение; смена сети и sleep/wake —
-              мгновенный реконнект. Успешный IP запоминается для SSID — дома коннект без скана.
+              реконнект после короткого ожидания Wi‑Fi. Успешный IP запоминается для SSID — дома
+              коннект без полного скана.
             </p>
           </li>
         </ul>
@@ -1080,15 +1092,16 @@
       </section>
 
       <section class="en reveal" lang="en">
-        <h2>Happ Bridge 1.1.7 for macOS</h2>
+        <h2>Happ Bridge 1.1.9 for macOS</h2>
         <p>
-          Menu bar utility: stable SOCKS5/HTTP localhost bridge to Happ.
+          Menu bar utility: stable SOCKS5/HTTP localhost bridge to Happ. Hardened for modern macOS
+          (Local Network, cold-boot discovery, update download progress).
           <a href="https://github.com/anatoly-kulishov/happ-bridge/releases/latest">Download .dmg</a>
         </p>
       </section>
 
       <footer>
-        <span>Open source · MIT · v1.1.7</span>
+        <span>Open source · MIT · v1.1.9</span>
         <a href="https://github.com/anatoly-kulishov/happ-bridge">GitHub</a>
         <a href="https://github.com/anatoly-kulishov/happ-bridge/blob/main/CHANGELOG.md">Changelog</a>
         <span>Not affiliated with Happ / Happ.su</span>
