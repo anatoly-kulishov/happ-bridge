@@ -103,8 +103,8 @@ export function createUpdater(hooks: UpdateHooks): {
 
           const onAvailable = (u: { version: string }) => {
             downloadVersion = u.version
+            // Keep download listeners; only end the "check" promise so the button unblocks.
             detachCheckListeners()
-            detachDownloadListeners()
             finishCheck({
               status: 'downloading',
               message: `Найдена версия ${u.version}. Скачиваем… 0%`,
@@ -132,6 +132,8 @@ export function createUpdater(hooks: UpdateHooks): {
               message = 'Обновления временно недоступны: релиз ещё публикуется или файл манифеста не найден. Попробуйте через пару минут.'
             } else if (/ETIMEDOUT|ENOTFOUND|ECONNREFUSED|network/i.test(raw)) {
               message = 'Нет сети. Проверьте подключение и нажмите «Проверить» ещё раз.'
+            } else if (/checksum|sha512|ERR_CHECKSUM/i.test(raw)) {
+              message = 'Файл обновления повреждён или манифест не совпадает. Попробуйте позже или скачайте .dmg вручную.'
             }
             console.warn('[updater] error:', raw)
             const next: UpdateInfo = {
@@ -143,11 +145,16 @@ export function createUpdater(hooks: UpdateHooks): {
             else emit(next)
           }
 
+          // Detach any leftovers from a previous check() before attaching.
+          detachCheckListeners()
+          detachDownloadListeners()
+
           autoUpdater.once('update-available', onAvailable)
           autoUpdater.once('update-not-available', onNot)
-          autoUpdater.once('error', onError)
-          autoUpdater.once('download-progress', onProgress)
-          autoUpdater.once('update-downloaded', onDownloaded)
+          // Progress fires many times; downloaded/error must stay until finish.
+          autoUpdater.on('error', onError)
+          autoUpdater.on('download-progress', onProgress)
+          autoUpdater.on('update-downloaded', onDownloaded)
 
           void autoUpdater.checkForUpdates().catch((err: Error) => onError(err))
         })

@@ -61,20 +61,27 @@ echo "  ZIP: $ZIP_NAME"
 
 # Generate latest-mac.yml from ACTUAL filenames (not derived from artifactName)
 # This is critical: electron-updater uses these URLs directly.
+# sha512 must be Base64 (electron-builder format). Hex also works in newer
+# electron-updater, but Base64 is what builder emits and what we verify against.
 YML_FILE="$ROOT/release/latest-mac.yml"
-cat > "$YML_FILE" << YML_HEADER
-version: ${VERSION}
-files:
-  - url: ${ZIP_NAME}
-YML_HEADER
 
-# Compute sha512 directly for both files
+sha512_b64() {
+  # openssl dgst -sha512 -binary | base64; portable on macOS and Linux CI
+  openssl dgst -sha512 -binary "$1" | openssl base64 -A
+}
+
 ZIP_CANDIDATE="$(ls "$ROOT"/release/*-"${VERSION}"-arm64.zip 2>/dev/null | head -1)"
-ZIP_SHA512="$(shasum -a 512 "$ZIP_CANDIDATE" | awk '{print $1}')"
-ZIP_SIZE="$(stat -f %z "$ZIP_CANDIDATE" 2>/dev/null || stat -c %s "$ZIP_CANDIDATE" 2>/dev/null)"
 DMG_CANDIDATE="$(ls "$ROOT"/release/*-"${VERSION}"-arm64.dmg 2>/dev/null | head -1)"
-DMG_SHA512="$(shasum -a 512 "$DMG_CANDIDATE" | awk '{print $1}')"
+if [[ -z "$ZIP_CANDIDATE" || -z "$DMG_CANDIDATE" ]]; then
+  echo "Error: local ZIP/DMG for ${VERSION} not found in release/" >&2
+  exit 1
+fi
+
+ZIP_SHA512="$(sha512_b64 "$ZIP_CANDIDATE")"
+ZIP_SIZE="$(stat -f %z "$ZIP_CANDIDATE" 2>/dev/null || stat -c %s "$ZIP_CANDIDATE" 2>/dev/null)"
+DMG_SHA512="$(sha512_b64 "$DMG_CANDIDATE")"
 DMG_SIZE="$(stat -f %z "$DMG_CANDIDATE" 2>/dev/null || stat -c %s "$DMG_CANDIDATE" 2>/dev/null)"
+RELEASE_DATE="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
 
 cat > "$YML_FILE" << YML_EOF
 version: ${VERSION}
@@ -87,7 +94,7 @@ files:
     size: ${DMG_SIZE}
 path: ${ZIP_NAME}
 sha512: ${ZIP_SHA512}
-releaseDate: $(date -u +%Y-%m-%dT%H:%M:%S.%NZ)Z
+releaseDate: ${RELEASE_DATE}
 YML_EOF
 
 echo "Generated latest-mac.yml:"
@@ -118,9 +125,26 @@ if ! echo "$YML_CONTENT" | grep -qF "$DMG_NAME"; then
   echo "$YML_CONTENT" >&2
   exit 1
 fi
+# electron-builder uses Base64 sha512; reject accidental hex (128 hex chars).
+PUBLISHED_SHA="$(echo "$YML_CONTENT" | awk '/^sha512:/{print $2; exit}')"
+if [[ -z "$PUBLISHED_SHA" ]]; then
+  echo "Error: latest-mac.yml missing top-level sha512" >&2
+  exit 1
+fi
+if [[ ${#PUBLISHED_SHA} -eq 128 && "$PUBLISHED_SHA" =~ ^[0-9a-fA-F]+$ ]]; then
+  echo "Error: latest-mac.yml sha512 looks like hex; electron-updater expects Base64" >&2
+  echo "  got: $PUBLISHED_SHA" >&2
+  exit 1
+fi
+if [[ "$PUBLISHED_SHA" != "$ZIP_SHA512" ]]; then
+  echo "Error: published sha512 does not match local ZIP hash" >&2
+  echo "  published: $PUBLISHED_SHA" >&2
+  echo "  local:     $ZIP_SHA512" >&2
+  exit 1
+fi
 
 echo ""
 echo "Release ${TAG} published and verified."
 echo "  DMG: $DMG_NAME"
 echo "  ZIP: $ZIP_NAME"
-echo "  latest-mac.yml: OK"
+echo "  latest-mac.yml: OK (sha512 Base64)"
