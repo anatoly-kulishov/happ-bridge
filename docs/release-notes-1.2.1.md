@@ -13,6 +13,8 @@ Or wait for the in-app updater if you already have 1.2.0+ (after this build is p
 - Версия в футере теперь кликабельная ссылка на страницу релизов на GitHub
 - Детальные пошаговые инструкции когда телефон не виден в сети
 - Детальные инструкции по предоставлению доступа к локальной сети (Local Network) и полному доступу к диску (Full Disk Access)
+- **UI**: блок «Пароль Happ (LAN)» теперь сворачиваемый аккордеон — не мешает если пароль не нужен
+- **UI**: кнопка «Экспорт для поддержки» внизу настроек — копирует полное состояние приложения (версия, сеть, настройки, диагностика) в буфер обмена для отправки в поддержку
 
 ### Fixed
 - **Updater**: multiple `check()` calls no longer accumulate event listeners — error/progress callbacks now properly removed after each check

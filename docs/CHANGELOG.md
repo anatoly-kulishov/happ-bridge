@@ -4,6 +4,8 @@
 
 ### Changed
 - **UI**: версия в футере теперь кликабельная ссылка на страницу релизов
+- **UI**: блок «Пароль Happ (LAN)» теперь сворачиваемый аккордеон — не мешает если пароль не нужен
+- **UI**: кнопка «Экспорт для поддержки» внизу настроек — копирует полное состояние приложения в буфер
 
 ### Fixed
 - **Updater**: `check()` now uses one-shot listeners (`.once()`) instead of persistent ones (`.on()`) — multiple consecutive checks no longer fire callbacks multiple times
