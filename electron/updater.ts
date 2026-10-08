@@ -99,8 +99,8 @@ export function createUpdater(hooks: UpdateHooks): {
 
           const onAvailable = (u: { version: string }) => {
             downloadVersion = u.version
-            // Keep download listeners; only end the "check" promise so the button unblocks.
             detachCheckListeners()
+            detachDownloadListeners()
             finishCheck({
               status: 'downloading',
               message: `Найдена версия ${u.version}. Скачиваем… 0%`,
@@ -141,9 +141,9 @@ export function createUpdater(hooks: UpdateHooks): {
 
           autoUpdater.once('update-available', onAvailable)
           autoUpdater.once('update-not-available', onNot)
-          autoUpdater.on('error', onError)
-          autoUpdater.on('download-progress', onProgress)
-          autoUpdater.on('update-downloaded', onDownloaded)
+          autoUpdater.once('error', onError)
+          autoUpdater.once('download-progress', onProgress)
+          autoUpdater.once('update-downloaded', onDownloaded)
 
           void autoUpdater.checkForUpdates().catch((err: Error) => onError(err))
         })

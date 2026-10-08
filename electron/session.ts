@@ -621,6 +621,7 @@ export class BridgeSession {
     this.relay.setPhoneIp(null)
     this.setStatus('disconnected')
     this.notifyLostOnce()
+    if (this.connectInFlight) return
     await this.connect('watchdog-lost')
   }
 

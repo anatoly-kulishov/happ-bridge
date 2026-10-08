@@ -162,7 +162,6 @@ export class ProxyRelay {
       })
 
       const pipe: ActivePipe = { client, remote }
-      this.pipes.add(pipe)
 
       // Only remote bytes prove the phone is alive (client can write into a blackhole).
       const mark = () => {
@@ -183,6 +182,8 @@ export class ProxyRelay {
       remote.on('error', cleanup)
       client.on('close', cleanup)
       remote.on('close', cleanup)
+
+      this.pipes.add(pipe)
     })
 
     server.on('error', (err) => this.onError?.(err))
