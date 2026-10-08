@@ -2,11 +2,19 @@
 
 ## 1.2.1 - 2026-10-08
 
+### Changed
+- **UI**: версия в футере теперь кликабельная ссылка на страницу релизов
+
 ### Fixed
 - **Updater**: `check()` now uses one-shot listeners (`.once()`) instead of persistent ones (`.on()`) — multiple consecutive checks no longer fire callbacks multiple times
 - **Updater**: `update-available` now properly closes all download-progress listeners so they don't fire after the update is downloaded
 - **Session**: `healthCheck()` guards against calling `connect('watchdog-lost')` when another `connect()` is already running — eliminates a TOCTOU race
 - **Relay**: pipe socket added to tracking set only after error/close handlers are registered — prevents leak on synchronous remote errors
+- **UI**: пошаговая инструкция когда телефон не виден в сети (4 пункта: Wi-Fi, LAN в Happ, Local Network в Mac, ожидание после перезагрузки)
+- **TCC**: детальные инструкции для каждого типа доступа — Local Network, Full Disk Access, где искать и что включать
+
+### Performance
+- **Discovery**: preferred IPs и subnet scan теперь запускаются параллельно — при 2 недоступных preferred IP экономия до 1-2 секунд при старте
 
 ## 1.2.0 - 2026-10-08
 
