@@ -70,16 +70,13 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
     hits.push(ip)
   }
 
-  for (const ip of ordered) {
-    if (signal?.aborted) return hits
-    record(await tryOne(ip, signal))
-  }
+  const orderedResults = ordered.map((ip) => tryOne(ip, signal))
+  const subnetScan =
+    scanSubnet ? scanAllHosts(hosts, tryOne, concurrency, signal) : Promise.resolve<string[]>([])
 
-  if (signal?.aborted) return hits
-  if (!scanSubnet) return hits
-
-  const scanned = await scanAllHosts(hosts, tryOne, concurrency, signal)
-  for (const ip of scanned) record(ip)
+  const [scannedOrdered, scannedSubnet] = await Promise.all([Promise.all(orderedResults), subnetScan])
+  for (const ip of scannedOrdered) record(ip)
+  for (const ip of scannedSubnet) record(ip)
   return hits
 }
 

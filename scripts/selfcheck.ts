@@ -48,7 +48,21 @@ import {
   rememberSsidPeer,
   shouldWarnPublicNoAuth,
 } from '../electron/wifi'
-import { freePorts } from './adversarial/_ports'
+async function freePorts(count: number): Promise<number[]> {
+  const net = await import('node:net')
+  const ports: number[] = []
+  for (let i = 0; i < count; i++) {
+    const server = net.createServer()
+    await new Promise<void>((resolve, reject) => {
+      server.listen(0, '127.0.0.1', () => resolve())
+      server.on('error', reject)
+    })
+    const addr = server.address()
+    ports.push(typeof addr === 'object' && addr ? addr.port : 0)
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+  return ports
+}
 
 async function main() {
   // --- Diagnostic mappers ---
