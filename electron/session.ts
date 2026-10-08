@@ -47,7 +47,7 @@ type SessionHooks = {
   onFirstConnect?: () => void
 }
 
-const BASE_WATCH_MS = 8000
+const BASE_WATCH_MS = 3000
 const MAX_IDLE_MS = 120_000
 /** Cap backoff while LAN IP is up but phone still missing (TCC / phone waking). */
 const SOFT_IDLE_MS = 15_000
@@ -434,6 +434,7 @@ export class BridgeSession {
     this.watchRunning = true
     this.watchAbort = new AbortController()
     this.lastNetFp = networkFingerprint()
+    this.idleFailStreak = 0
     log('watch', 'startWatch fp=%s (poll 3s)', this.lastNetFp)
     this.netPoll = setInterval(() => this.onNetworkMaybeChanged(), 3000)
     void this.watchLoop()
@@ -505,7 +506,7 @@ export class BridgeSession {
         if (reason === 'user' || reason === 'watchdog-lost' || reason === 'network-change') {
           this.notifyFail(reason)
         }
-        if (reason === 'watchdog-idle' || reason === 'startup') {
+        if (reason === 'watchdog-idle') {
           this.bumpIdleBackoff(localIpv4Addresses().length > 0)
         }
         return false
