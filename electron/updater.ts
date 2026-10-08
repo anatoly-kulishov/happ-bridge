@@ -53,6 +53,10 @@ export function createUpdater(hooks: UpdateHooks): {
         }
         autoUpdater.autoDownload = true
         autoUpdater.autoInstallOnAppQuit = true
+        // macOS: blockmap-based differential downloads hang at 0% when the
+        // existing app.asar read or blockmap match silently fails. Force a
+        // full ZIP download so the updater actually pulls the file.
+        autoUpdater.disableDifferentialDownload = true
 
         return await new Promise<UpdateInfo>((resolve) => {
           let settled = false
