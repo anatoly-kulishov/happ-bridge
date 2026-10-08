@@ -67,40 +67,14 @@ version: ${VERSION}
 files:
   - url: ${ZIP_NAME}
 YML_HEADER
-# Append remaining fields for ZIP (we'll fill sha512/size from the existing yml if available,
-# or fetch from the URL)
-# For a clean build, read sha512 from the existing blockmap or recalculate.
-# Simpler: reuse the yml electron-builder generated, just fix the filenames.
-# Since we upload first, we can read from what electron-builder wrote and patch just names.
 
-# Read electron-builder's generated yml (has correct sha512/size) and patch filenames
-BUILD_YML="$ROOT/release/builder-debug.yml"
-if [[ -f "$BUILD_YML" ]]; then
-  # Extract sha512 and size from builder-debug.yml for each file
-  ZIP_SHA512="$(grep -A2 "file:.*${VERSION}-arm64-mac.zip" "$BUILD_YML" | grep sha512 | awk '{print $2}')"
-  ZIP_SIZE="$(grep -A2 "file:.*${VERSION}-arm64-mac.zip" "$BUILD_YML" | grep size | awk '{print $2}')"
-  DMG_SHA512="$(grep -A2 "file:.*${VERSION}-arm64.dmg" "$BUILD_YML" | grep sha512 | awk '{print $2}')"
-  DMG_SIZE="$(grep -A2 "file:.*${VERSION}-arm64.dmg" "$BUILD_YML" | grep size | awk '{print $2}')"
-fi
-
-# Fallback: compute sha512 if not found in builder-debug.yml
-compute_sha512() {
-  local file="$1"
-  if [[ -f "$file" ]]; then
-    shasum -a 512 "$file" | awk '{print $1}'
-  fi
-}
-
-if [[ -z "$ZIP_SHA512" ]]; then
-  ZIP_CANDIDATE="$(ls "$ROOT"/release/*-"${VERSION}"-arm64.zip 2>/dev/null | head -1)"
-  ZIP_SHA512="$(compute_sha512 "$ZIP_CANDIDATE")"
-  ZIP_SIZE="$(stat -f %z "$ZIP_CANDIDATE" 2>/dev/null || stat -c %s "$ZIP_CANDIDATE" 2>/dev/null)"
-fi
-if [[ -z "$DMG_SHA512" ]]; then
-  DMG_CANDIDATE="$(ls "$ROOT"/release/*-"${VERSION}"-arm64.dmg 2>/dev/null | head -1)"
-  DMG_SHA512="$(compute_sha512 "$DMG_CANDIDATE")"
-  DMG_SIZE="$(stat -f %z "$DMG_CANDIDATE" 2>/dev/null || stat -c %s "$DMG_CANDIDATE" 2>/dev/null)"
-fi
+# Compute sha512 directly for both files
+ZIP_CANDIDATE="$(ls "$ROOT"/release/*-"${VERSION}"-arm64.zip 2>/dev/null | head -1)"
+ZIP_SHA512="$(shasum -a 512 "$ZIP_CANDIDATE" | awk '{print $1}')"
+ZIP_SIZE="$(stat -f %z "$ZIP_CANDIDATE" 2>/dev/null || stat -c %s "$ZIP_CANDIDATE" 2>/dev/null)"
+DMG_CANDIDATE="$(ls "$ROOT"/release/*-"${VERSION}"-arm64.dmg 2>/dev/null | head -1)"
+DMG_SHA512="$(shasum -a 512 "$DMG_CANDIDATE" | awk '{print $1}')"
+DMG_SIZE="$(stat -f %z "$DMG_CANDIDATE" 2>/dev/null || stat -c %s "$DMG_CANDIDATE" 2>/dev/null)"
 
 cat > "$YML_FILE" << YML_EOF
 version: ${VERSION}
