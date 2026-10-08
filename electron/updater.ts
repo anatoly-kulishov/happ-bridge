@@ -122,9 +122,17 @@ export function createUpdater(hooks: UpdateHooks): {
           const onError = (err: Error) => {
             detachCheckListeners()
             detachDownloadListeners()
+            const raw = err.message || ''
+            let message = 'Не удалось проверить обновления. Попробуйте позже.'
+            if (/404|latest-mac\.yml/i.test(raw)) {
+              message = 'Обновления временно недоступны: релиз ещё публикуется или файл манифеста не найден. Попробуйте через пару минут.'
+            } else if (/ETIMEDOUT|ENOTFOUND|ECONNREFUSED|network/i.test(raw)) {
+              message = 'Нет сети. Проверьте подключение и нажмите «Проверить» ещё раз.'
+            }
+            console.warn('[updater] error:', raw)
             const next: UpdateInfo = {
               status: 'error',
-              message: err.message || 'Не удалось проверить обновления',
+              message,
               version: downloadVersion,
             }
             if (!settled) finishCheck(next)
@@ -140,7 +148,14 @@ export function createUpdater(hooks: UpdateHooks): {
           void autoUpdater.checkForUpdates().catch((err: Error) => onError(err))
         })
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
+        const raw = err instanceof Error ? err.message : String(err)
+        let message = 'Не удалось проверить обновления. Попробуйте позже.'
+        if (/404|latest-mac\.yml/i.test(raw)) {
+          message = 'Обновления временно недоступны: релиз ещё публикуется или файл манифеста не найден.'
+        } else if (/ETIMEDOUT|ENOTFOUND|ECONNREFUSED|network/i.test(raw)) {
+          message = 'Нет сети. Проверьте подключение и нажмите «Проверить» ещё раз.'
+        }
+        console.warn('[updater] catch:', raw)
         emit({ status: 'error', message })
         return info
       }
