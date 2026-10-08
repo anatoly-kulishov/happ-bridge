@@ -610,6 +610,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           )}
           {saved ? 'Сохранено' : saving ? 'Сохраняю…' : 'Сохранить'}
         </button>
+        <span className="ml-2 text-xs text-zinc-600">v1.2.1</span>
       </footer>
     </div>
   )

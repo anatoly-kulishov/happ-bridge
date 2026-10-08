@@ -250,24 +250,50 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
 
   ipcMain.handle('bridge:scanPeers', async () => session!.scanPeers())
 
-  ipcMain.handle('bridge:copyDiagnostics', () => {
+  ipcMain.handle('bridge:copyDiagnostics', async () => {
+    const os = await import('node:os')
     const s = session!.getState()
-    if (!s.diagnostics || s.diagnostics.length === 0) return ''
-    const lines: string[] = [`Happ Bridge ${app.getVersion()}`, new Date().toISOString()]
-    const head: string[] = [`Статус: ${s.status}${s.phoneIp ? ` · ${s.phoneIp}` : ''}`]
-    if (s.wifiSsid) {
-      head.push(`SSID: ${s.wifiSsid}${s.isHomeNetwork ? ' (домашняя)' : ' (чужая)'}`)
+    const stateForDebug = {
+      app: { version: app.getVersion() },
+      runtime: {
+        platform: process.platform,
+        arch: process.arch,
+        electron: process.versions.electron,
+        node: process.versions.node,
+        chrome: process.versions.chrome,
+        macOS: os.release(),
+        uptime: os.uptime(),
+        cpus: os.cpus().length,
+      },
+      bridge: {
+        status: s.status,
+        phoneIp: s.phoneIp,
+        peers: s.peers,
+        socksLocal: s.socksLocal,
+        httpLocal: s.httpLocal,
+        enabled: s.settings.enabled,
+        wizardDone: s.settings.wizardDone,
+        paused: s.paused,
+        error: s.error,
+        wifiSsid: s.wifiSsid,
+        isHomeNetwork: s.isHomeNetwork,
+        lanPasswordSet: s.lanPasswordSet,
+        scan: s.scan,
+      },
+      settings: {
+        socksPort: s.settings.socksPort,
+        httpPort: s.settings.httpPort,
+        manualIp: s.settings.manualIp,
+        lastPhoneIp: s.settings.lastPhoneIp,
+        recentPhoneIps: s.settings.recentPhoneIps,
+        ssidPeers: s.settings.ssidPeers,
+        homeSsids: s.settings.homeSsids,
+        openAtLogin: s.settings.openAtLogin,
+      },
+      diagnostics: s.diagnostics,
+      update: s.update,
     }
-    head.push(`мост: ${s.socksLocal} / ${s.httpLocal}`)
-    if (s.peers.length > 0) head.push(`найдено телефонов: ${s.peers.length}`)
-    if (s.paused) head.push('bridged отключён пользователем')
-    if (s.error) head.push(`ошибка: ${s.error}`)
-    lines.push(head.join(' · '), '')
-    for (const d of s.diagnostics) {
-      const label = d.status === 'ok' ? 'OK' : d.status === 'warn' ? 'WARN' : 'ERR'
-      lines.push(`${label} ${d.label}\n  ${d.detail}`)
-    }
-    const text = lines.join('\n')
+    const text = JSON.stringify(stateForDebug, null, 2)
     clipboard.writeText(text)
     return text
   })
