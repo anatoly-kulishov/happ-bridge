@@ -181,8 +181,8 @@ export function installDevMock() {
         ...state,
         update: {
           status: 'downloading',
-          message: 'Найдена версия 1.2.0. Скачиваем… 0%',
-          version: '1.2.0',
+          message: 'Найдена версия 1.2.1. Скачиваем… 0%',
+          version: '1.2.1',
           progress: 0,
         },
       }
@@ -193,8 +193,8 @@ export function installDevMock() {
           ...state,
           update: {
             status: 'downloading',
-            message: `Скачиваем 1.2.0… ${progress}%`,
-            version: '1.2.0',
+            message: `Скачиваем 1.2.1… ${progress}%`,
+            version: '1.2.1',
             progress,
           },
         }
@@ -204,8 +204,8 @@ export function installDevMock() {
         ...state,
         update: {
           status: 'available',
-          message: 'Версия 1.2.0 скачана — перезапустите приложение для установки.',
-          version: '1.2.0',
+          message: 'Версия 1.2.1 скачана — перезапустите приложение для установки.',
+          version: '1.2.1',
           progress: 100,
         },
       }

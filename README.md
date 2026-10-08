@@ -6,7 +6,7 @@ Set Telegram, Cursor, Firefox, and WebStorm to `127.0.0.1` once. When the phone 
 
 [Русский](#happ-bridge-рус) · [English](#happ-bridge-en) · [Download](#install) · [Site](https://anatoly-kulishov.github.io/happ-bridge/) · [Changelog](docs/CHANGELOG.md)
 
-**Текущая версия:** 1.2.0
+**Текущая версия:** 1.2.1
 
 ---
 
@@ -30,7 +30,7 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 - macOS (Apple Silicon) + телефон с Happ и включённым **«Разрешить LAN подключение»**
 - кто устал обновлять прокси в Telegram / Cursor / IDE после смены Wi‑Fi
 
-### Возможности (1.2.0)
+### Возможности (1.2.1)
 
 - автопоиск Happ в Wi‑Fi; если телефонов несколько - список и выбор вручную
 - устойчивый поиск после перезагрузки Mac (ожидание Wi‑Fi, мягкий backoff, подсказка Local Network в диагностике)
@@ -94,7 +94,7 @@ npm test
 npm run dist
 ```
 
-Готовый файл: `release/Happ Bridge-1.2.0-arm64.dmg`
+Готовый файл: `release/Happ Bridge-1.2.1-arm64.dmg`
 
 Разработка: `npm run dev`
 
@@ -148,7 +148,7 @@ Electron · Vite · React · TypeScript · Tailwind
 
 Stable localhost proxy bridge to a phone running Happ on your LAN. Stop editing proxy IPs in Telegram, Cursor, Firefox, and WebStorm every time DHCP moves your phone.
 
-**Version 1.2.0** - richer diagnostics: precise Happ reachability (auth-required / auth-failed / unreachable), end-to-end relay check, automatic subnet scan when phone IP changes, informative copyable report. Install script guards now give clear instructions instead of silent "No such file".
+**Version 1.2.1** - richer diagnostics: precise Happ reachability (auth-required / auth-failed / unreachable), end-to-end relay check, automatic subnet scan when phone IP changes, informative copyable report. Install script guards now give clear instructions instead of silent "No such file".
 
 **Version 1.1.9** - update download progress; 1.1.8 macOS hardening (cold-boot discovery, inject TCC, simpler connection UI).
 
