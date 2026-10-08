@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.9 - 2026-10-08
+
+### Fixed
+- Auto-update download no longer sticks on «Скачиваем…» without feedback: progress bar + %, keep download listeners until finish/error (previously `update-downloaded` was detached when the update was found)
+
 ## 1.1.8 - 2026-10-08
 
 ### Fixed

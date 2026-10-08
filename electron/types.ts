@@ -54,9 +54,18 @@ export type DiagnosticCheck = {
 }
 
 export type UpdateInfo = {
-  status: 'idle' | 'checking' | 'available' | 'not-available' | 'error' | 'dev'
+  status:
+    | 'idle'
+    | 'checking'
+    | 'downloading'
+    | 'available'
+    | 'not-available'
+    | 'error'
+    | 'dev'
   message: string
   version?: string
+  /** 0–100 while status is `downloading`. */
+  progress?: number
 }
 
 export type BridgeState = {
