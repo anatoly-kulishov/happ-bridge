@@ -579,12 +579,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           Мастер
         </button>
         {dirty && !saved && (
-          <span className="group relative ml-2 flex items-center" title="Несохранённые изменения">
-            <span className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-300" />
-            <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-amber-200/90 opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
-              Несохранённые изменения
-            </span>
-          </span>
+          <span className="ml-2 inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-300" title="Несохранённые изменения" />
         )}
         <div className="flex-1" />
         <span className="text-xs text-zinc-600">v1.2.1</span>
@@ -593,7 +588,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           type="button"
           disabled={saving}
           onClick={() => void save()}
-          className="btn-primary ml-2 flex min-w-[7.5rem] items-center justify-center gap-1.5"
+          className="btn-primary flex min-w-[7.5rem] items-center justify-center gap-1.5"
         >
           {saving ? (
             <Loader2 size={16} className="animate-spin" aria-hidden />
