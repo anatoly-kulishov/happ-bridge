@@ -193,7 +193,7 @@ export function installDevMock() {
           update: {
             status: 'downloading',
             message: `Скачиваем 1.2.0… ${progress}%`,
-            version: '1.1.9',
+            version: '1.2.0',
             progress,
           },
         }
@@ -204,7 +204,7 @@ export function installDevMock() {
         update: {
           status: 'available',
           message: 'Версия 1.2.0 скачана — перезапустите приложение для установки.',
-          version: '1.1.9',
+          version: '1.2.0',
           progress: 100,
         },
       }
