@@ -14,8 +14,8 @@ export type DiscoverOptions = {
   scanSubnet?: boolean
   /** Happ LAN credentials — probe requires successful SOCKS5 user/pass. */
   auth?: SocksAuth | null
-  /** Probed-hosts progress for UI (done, total). */
-  onProgress?: (done: number, total: number) => void
+  /** Probed-hosts progress for UI (done, total, current IPv4). */
+  onProgress?: (done: number, total: number, currentIp: string) => void
 }
 
 /** First hit only (preferred → subnet). Kept for fast reconnect / tests. */
@@ -72,7 +72,7 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
     const start = Date.now()
     const ok = await probeSocks5(ip, socksPort, probeMs, abort ?? signal, auth)
     probed += 1
-    onProgress?.(probed, total)
+    onProgress?.(probed, total, ip)
     if (ok) {
       log('discover', 'HIT ip=%s rtt=%dms', ip, Date.now() - start)
     } else {

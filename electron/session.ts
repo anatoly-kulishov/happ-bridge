@@ -89,7 +89,7 @@ export class BridgeSession {
   private disposed = false
   private netPoll: ReturnType<typeof setInterval> | null = null
   private scanAbort: AbortController | null = null
-  private scanProgress: { done: number; total: number } | null = null
+  private scanProgress: { done: number; total: number; currentIp?: string } | null = null
   private probeFails = 0
   private idleDelayMs = BASE_WATCH_MS
   private idleFailStreak = 0
@@ -489,8 +489,8 @@ export class BridgeSession {
         signal: this.discoverAbort.signal,
         auth,
         timeoutMs: coldProbe ? COLD_PROBE_MS : undefined,
-        onProgress: (done, total) => {
-          this.scanProgress = { done, total }
+        onProgress: (done, total, currentIp) => {
+          this.scanProgress = { done, total, currentIp }
           if (done % 16 === 0) this.hooks.onChange()
         },
       })

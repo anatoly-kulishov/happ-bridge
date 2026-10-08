@@ -94,7 +94,7 @@ export type BridgeState = {
   /** LAN password is stored in Keychain (renderer never sees it). */
   lanPasswordSet: boolean
   /** Subnet scan progress while status is 'searching'. */
-  scan: { done: number; total: number } | null
+  scan: { done: number; total: number; currentIp?: string } | null
 }
 
 export type StatusTone = 'green' | 'yellow' | 'red' | 'grey'

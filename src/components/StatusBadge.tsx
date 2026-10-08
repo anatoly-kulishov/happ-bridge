@@ -15,7 +15,7 @@ export function StatusBadge({
   lanAuthOn?: boolean
   enabled?: boolean
   paused?: boolean
-  scan?: { done: number; total: number } | null
+  scan?: { done: number; total: number; currentIp?: string } | null
 }) {
   const item =
     !enabled || paused
@@ -44,17 +44,22 @@ export function StatusBadge({
         )}
       </div>
       {scan && enabled && !paused && status === 'searching' && scan.total > 0 && (
-        <div className="flex items-center gap-2" role="progressbar" aria-label="Поиск телефона">
-          <Loader2 size={14} className="animate-spin text-sky-400" />
-          <div className="h-1 flex-1 overflow-hidden rounded-full bg-zinc-800">
-            <div
-              className="h-full rounded-full bg-sky-500 transition-[width] duration-200"
-              style={{ width: `${Math.min(100, Math.round((scan.done / scan.total) * 100))}%` }}
-            />
+        <div className="space-y-1" role="progressbar" aria-label="Поиск телефона">
+          <div className="flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin text-sky-400" />
+            <div className="h-1 flex-1 overflow-hidden rounded-full bg-zinc-800">
+              <div
+                className="h-full rounded-full bg-sky-500 transition-[width] duration-200"
+                style={{ width: `${Math.min(100, Math.round((scan.done / scan.total) * 100))}%` }}
+              />
+            </div>
+            <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+              {scan.done}/{scan.total}
+            </span>
           </div>
-          <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-            {scan.done}/{scan.total}
-          </span>
+          <p className="text-xs text-zinc-500">
+            Ищем {scan.currentIp ?? 'телефон'}…
+          </p>
         </div>
       )}
     </div>
