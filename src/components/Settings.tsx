@@ -582,7 +582,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           <span className="ml-2 inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-300" title="Несохранённые изменения" />
         )}
         <div className="flex-1" />
-        <span className="text-xs text-zinc-600">v1.2.1</span>
+        <span className="text-xs text-zinc-600">v1.2.2</span>
         <div className="flex-1" />
         <button
           type="button"
