@@ -6,6 +6,7 @@ import {
   Save,
   Gauge,
   Home,
+  Loader2,
   RefreshCw,
   Search,
   Plug,
@@ -513,8 +514,12 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           onClick={() => void save()}
           className="btn-primary flex min-w-[7.5rem] items-center justify-center gap-1.5"
         >
-          <Save size={16} />
-          {saved ? 'Сохранено' : saving ? '…' : 'Сохранить'}
+          {saving ? (
+            <Loader2 size={16} className="animate-spin" aria-hidden />
+          ) : (
+            <Save size={16} aria-hidden />
+          )}
+          {saved ? 'Сохранено' : saving ? 'Сохраняю…' : 'Сохранить'}
         </button>
       </footer>
     </div>
