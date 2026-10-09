@@ -84,7 +84,8 @@ export function Settings({ state, onState, onShowWizard }: Props) {
   const [diagCopied, setDiagCopied] = useState(false)
 
   const bridgeActive = state.settings.enabled && state.status !== 'disconnected'
-  const connected = state.status === 'connected'
+  /** Soft-connected: healthy or grace (unstable) — keep peer list / soft rescan. */
+  const connected = state.status === 'connected' || state.status === 'unstable'
   const bridgeError = state.error ? parseBridgeError(state.error) : null
 
   const dirty =
@@ -139,7 +140,10 @@ export function Settings({ state, onState, onShowWizard }: Props) {
   }
 
   const copyDiagnostics = async () => {
+    setDiagHidden(false)
     await window.happBridge.copyDiagnostics()
+    // copyDiagnostics runs diagnose(); pull fresh state into UI.
+    onState(await window.happBridge.getState())
     setDiagCopied(true)
     window.setTimeout(() => setDiagCopied(false), 1500)
   }
@@ -181,9 +185,21 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           </div>
           <div
             className={`h-2.5 w-2.5 rounded-full ${
-              connected ? 'bg-emerald-400' : state.settings.enabled ? 'bg-amber-400' : 'bg-zinc-500'
+              state.status === 'connected'
+                ? 'bg-emerald-400'
+                : state.settings.enabled
+                  ? 'bg-amber-400'
+                  : 'bg-zinc-500'
             }`}
-            title={connected ? 'Подключено' : state.settings.enabled ? 'Поиск' : 'Выключено'}
+            title={
+              state.status === 'connected'
+                ? 'Подключено'
+                : state.status === 'unstable'
+                  ? 'Связь нестабильна'
+                  : state.settings.enabled
+                    ? 'Поиск'
+                    : 'Выключено'
+            }
           />
         </header>
 
@@ -392,31 +408,35 @@ export function Settings({ state, onState, onShowWizard }: Props) {
         <Card
           title="Диагностика"
           action={
-            <button
-              type="button"
-              disabled={diagnosing || busy}
-              onClick={() => {
-                setDiagHidden(false)
-                void diagnose()
-              }}
-              className="flex h-7 items-center gap-1 rounded-md border border-zinc-700 px-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
-            >
-              <BusyIcon busy={diagnosing} icon={Gauge} size={13} />
-              {diagnosing ? 'Проверяю…' : 'Запустить'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={diagnosing || busy}
+                onClick={() => void copyDiagnostics()}
+                className="flex h-7 items-center gap-1 rounded-md border border-zinc-700 px-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+                title="Снимок + хвост лога для разбора сбоев"
+              >
+                {diagCopied ? <Check size={13} /> : <Copy size={13} />}
+                {diagCopied ? 'Скопировано' : 'Отчёт'}
+              </button>
+              <button
+                type="button"
+                disabled={diagnosing || busy}
+                onClick={() => {
+                  setDiagHidden(false)
+                  void diagnose()
+                }}
+                className="flex h-7 items-center gap-1 rounded-md border border-zinc-700 px-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+              >
+                <BusyIcon busy={diagnosing} icon={Gauge} size={13} />
+                {diagnosing ? 'Проверяю…' : 'Запустить'}
+              </button>
+            </div>
           }
         >
           {state.diagnostics && state.diagnostics.length > 0 && !diagHidden && (
             <>
               <div className="mb-2 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => void copyDiagnostics()}
-                  className="flex items-center gap-1 text-xs text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
-                >
-                  {diagCopied ? <Check size={12} /> : <Copy size={12} />}
-                  {diagCopied ? 'Скопировано' : 'Скопировать отчёт'}
-                </button>
                 <button
                   type="button"
                   onClick={() => setDiagHidden(true)}
@@ -430,7 +450,8 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           )}
           {(!state.diagnostics || state.diagnostics.length === 0 || diagHidden) && (
             <p className="text-xs text-zinc-500">
-              Проверит Wi‑Fi, доступность Happ, локальный мост и статус подключения.
+              «Запустить» - проверки сети. «Отчёт» - JSON со снимком, диагностикой и хвостом
+              лога (для разбора, когда телефон долго не находится).
             </p>
           )}
         </Card>

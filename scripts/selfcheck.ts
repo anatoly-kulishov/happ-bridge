@@ -15,10 +15,14 @@ import {
   isIpv4Family,
   localIpv4Addresses,
   localSubnetHosts,
+  LOST_AFTER_MS,
+  networkFingerprint,
+  orderedDiscoverIps,
   prioritizedHosts,
   pickPreferredPhone,
   preferredIpsFromSettings,
   scanAllHosts,
+  shouldDeclareLost,
 } from '../electron/discover'
 import {
   applyInject,
@@ -178,6 +182,50 @@ async function main() {
   )
   assert.equal(statusPresentation('searching', null).tone, 'yellow')
   assert.ok(statusPresentation('connected', '1.1.1.1').trayTip.includes('1.1.1.1'))
+  assert.equal(statusPresentation('unstable', '10.0.0.2').tone, 'yellow')
+  assert.match(statusPresentation('unstable', '10.0.0.2').label, /нестабильна/)
+
+  // Grace period: short silence is not LOST; 45s is.
+  assert.equal(
+    shouldDeclareLost({ firstFailAt: null, now: 100_000, lostAfterMs: LOST_AFTER_MS }),
+    false,
+  )
+  assert.equal(
+    shouldDeclareLost({ firstFailAt: 100_000, now: 100_000 + 10_000, lostAfterMs: LOST_AFTER_MS }),
+    false,
+  )
+  assert.equal(
+    shouldDeclareLost({ firstFailAt: 100_000, now: 100_000 + LOST_AFTER_MS, lostAfterMs: LOST_AFTER_MS }),
+    true,
+  )
+
+  // Preferred IPs before stale manualIp so reconnect is not blocked by a dead lease.
+  assert.deepEqual(orderedDiscoverIps('192.168.0.208', ['192.168.0.209', '192.168.0.208']), [
+    '192.168.0.209',
+    '192.168.0.208',
+  ])
+  assert.deepEqual(orderedDiscoverIps('10.0.0.1', []), ['10.0.0.1'])
+
+  // Fingerprint ignores secondary iface when phone /24 is known.
+  assert.equal(
+    networkFingerprint(['192.168.0.212', '192.168.172.11'], '192.168.0.209'),
+    '192.168.0.212',
+  )
+  assert.equal(
+    networkFingerprint(['192.168.0.212', '10.0.0.5'], null),
+    '10.0.0.5,192.168.0.212',
+  )
+
+  // Dual iface: focus recent phone /24, do not scan tether/VPN subnet.
+  {
+    const focused = localSubnetHosts(
+      ['192.168.0.212', '192.168.157.182'],
+      ['192.168.0.209', '192.168.0.208'],
+    )
+    assert.equal(focused.length, 253)
+    assert.ok(focused.includes('192.168.0.209'))
+    assert.ok(!focused.some((ip) => ip.startsWith('192.168.157.')))
+  }
   assert.equal(
     traySecurityPresentation({
       tip: 'base',
@@ -331,14 +379,15 @@ async function main() {
   assert.deepEqual(
     localIpv4Addresses({
       en0: [
+        // Node may report family as numeric 4; cast fixture past the string-literal typedef.
         {
           address: '192.168.1.10',
           netmask: '255.255.255.0',
-          family: 4 as unknown as string,
+          family: 4,
           mac: '00:00:00:00:00:00',
           internal: false,
           cidr: '192.168.1.10/24',
-        },
+        } as unknown as os.NetworkInterfaceInfo,
         {
           address: '127.0.0.1',
           netmask: '255.0.0.0',
@@ -377,28 +426,59 @@ async function main() {
   // Local HTTP port must tunnel to phone SOCKS port (Happ has no :httpPort).
   {
     const [socks, http] = await freePorts(2)
-    let hit = false
-    const phone = net.createServer((c) => {
-      hit = true
-      c.end()
-    })
-    // Bind phone on ::1 so local 127.0.0.1:socks can still listen.
-    await new Promise<void>((resolve, reject) => {
-      phone.once('error', reject)
-      phone.listen(socks, '::1', () => resolve())
-    })
-    const r = new ProxyRelay({ socksPort: socks, httpPort: http })
-    await r.start('::1')
-    await new Promise<void>((resolve, reject) => {
-      const c = net.connect({ host: '127.0.0.1', port: http }, () => {
+    const phoneAccepted = new Promise<void>((resolve, reject) => {
+      const phone = net.createServer((c) => {
         c.end()
+        resolve()
       })
-      c.on('close', () => resolve())
-      c.on('error', reject)
+      phone.once('error', reject)
+      phone.listen(socks, '::1', () => {
+        void (async () => {
+          const r = new ProxyRelay({ socksPort: socks, httpPort: http })
+          try {
+            await r.start('::1')
+            const c = net.connect({ host: '127.0.0.1', port: http })
+            c.on('error', reject)
+            await phoneAccepted
+            c.destroy()
+            await r.stop()
+            await new Promise<void>((res) => phone.close(() => res()))
+          } catch (err) {
+            await r.stop().catch(() => undefined)
+            phone.close()
+            reject(err)
+          }
+        })().catch(reject)
+      })
     })
+    await Promise.race([
+      phoneAccepted,
+      new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error('HTTP→phone tunnel timed out')), 3_000),
+      ),
+    ])
+  }
+
+  // Unreachable phone: relay must fail the client within connect timeout (~5s), not hang.
+  {
+    const [socks, http] = await freePorts(2)
+    const r = new ProxyRelay({ socksPort: socks, httpPort: http })
+    // TEST-NET-1: non-routable; connect hangs until our REMOTE_CONNECT_MS fires.
+    await r.start('192.0.2.1')
+    const started = Date.now()
+    await new Promise<void>((resolve, reject) => {
+      const c = net.connect({ host: '127.0.0.1', port: socks })
+      const done = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+      const timer = setTimeout(() => reject(new Error('relay connect timeout too slow')), 8_000)
+      c.on('close', done)
+      c.on('error', done)
+    })
+    const elapsed = Date.now() - started
     await r.stop()
-    await new Promise<void>((resolve) => phone.close(() => resolve()))
-    assert.equal(hit, true, 'HTTP local must dial phone SOCKS port')
+    assert.ok(elapsed < 7_000, `expected fail-fast connect, got ${elapsed}ms`)
   }
 
   const merged = mergeCursorSettings(

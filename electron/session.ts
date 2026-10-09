@@ -7,6 +7,8 @@ import {
   localIpv4Addresses,
   networkFingerprint,
   preferredIpsFromSettings,
+  LOST_AFTER_MS,
+  shouldDeclareLost,
   waitForLocalIpv4,
 } from './discover'
 import { ProxyRelay, checkProxyAuth, probeSocks5 } from './relay'
@@ -51,11 +53,17 @@ const BASE_WATCH_MS = 3000
 const MAX_IDLE_MS = 120_000
 /** Cap backoff while LAN IP is up but phone still missing (TCC / phone waking). */
 const SOFT_IDLE_MS = 15_000
-const PROBE_FAILS_NEEDED = 3
+/** Health-check SOCKS probe; 500ms was too short for sleepy phones. */
+const HEALTH_PROBE_MS = 1_500
 const TRAFFIC_FRESH_MS = 15_000
+/** Long probe only for cold boot / wake — not for watchdog-lost. */
 const COLD_PROBE_MS = 5000
 const STARTUP_NET_WAIT_MS = 25_000
 const RESUME_NET_WAIT_MS = 10_000
+/** After LOST, poll last/recent IPs this often while full scan runs. */
+const FAST_RECOVERY_POLL_MS = 2_000
+const FAST_RECOVERY_WINDOW_MS = 60_000
+const FAST_RECOVERY_PROBE_MS = 800
 
 /** Human-readable Russian message for known Node error codes; unknown ⇒ raw message. */
 function presentError(err: unknown): string {
@@ -90,14 +98,17 @@ export class BridgeSession {
   private netPoll: ReturnType<typeof setInterval> | null = null
   private scanAbort: AbortController | null = null
   private scanProgress: { done: number; total: number; currentIp?: string } | null = null
-  private probeFails = 0
+  /** Wall-clock of the first consecutive health-check failure (grace window). */
+  private firstProbeFailAt: number | null = null
   private idleDelayMs = BASE_WATCH_MS
   private idleFailStreak = 0
-  private lastNetFp = networkFingerprint()
+  private lastNetFp = networkFingerprint(undefined, null)
   private announcedFirstConnect = false
   private lastLostNotifyAt = 0
   /** After Disconnect: skip auto reconnect until user Find / select. */
   private holdOff = false
+  /** Last known phone IP kept across LOST for fast recovery polls. */
+  private lastKnownPhoneIp: string | null = null
 
   private readonly relay: ProxyRelay
   private readonly hooks: SessionHooks
@@ -141,6 +152,41 @@ export class BridgeSession {
         this.settings.proxyPassword.length > 0,
       scan: this.status === 'searching' ? this.scanProgress : null,
       ...wifiBridgeFlags(this.wifiSsid, this.settings, lanAuthOn),
+    }
+  }
+
+  /** Extra fields for support JSON (not shown in UI). */
+  getDebugSnapshot(): {
+    localIps: string[]
+    netFingerprint: string
+    lastKnownPhoneIp: string | null
+    firstProbeFailAt: number | null
+    probeSilentMs: number | null
+    idleDelayMs: number
+    idleFailStreak: number
+    holdOff: boolean
+    connectInFlight: boolean
+    relayListening: boolean
+    relayTargetIp: string | null
+    lastTrafficAgeMs: number | null
+  } {
+    const localIps = localIpv4Addresses()
+    const focus = this.phoneIp ?? this.lastKnownPhoneIp
+    const trafficAt = this.relay.lastTrafficMs
+    return {
+      localIps,
+      netFingerprint: networkFingerprint(localIps, focus),
+      lastKnownPhoneIp: this.lastKnownPhoneIp,
+      firstProbeFailAt: this.firstProbeFailAt,
+      probeSilentMs:
+        this.firstProbeFailAt != null ? Date.now() - this.firstProbeFailAt : null,
+      idleDelayMs: this.idleDelayMs,
+      idleFailStreak: this.idleFailStreak,
+      holdOff: this.holdOff,
+      connectInFlight: Boolean(this.connectInFlight),
+      relayListening: this.relay.isListening(),
+      relayTargetIp: this.relay.targetIp,
+      lastTrafficAgeMs: trafficAt > 0 ? Date.now() - trafficAt : null,
     }
   }
 
@@ -282,7 +328,8 @@ export class BridgeSession {
 
     await this.relay.start(ip)
     this.phoneIp = ip
-    this.probeFails = 0
+    this.lastKnownPhoneIp = ip
+    this.firstProbeFailAt = null
     this.idleDelayMs = BASE_WATCH_MS
     this.idleFailStreak = 0
     await this.bindPeerToWifi(ip)
@@ -327,7 +374,7 @@ export class BridgeSession {
     if (!this.settings.enabled || this.holdOff || this.disposed) return
     this.idleDelayMs = BASE_WATCH_MS
     this.idleFailStreak = 0
-    this.probeFails = 0
+    this.firstProbeFailAt = null
     void (async () => {
       await waitForLocalIpv4({
         timeoutMs: RESUME_NET_WAIT_MS,
@@ -420,20 +467,44 @@ export class BridgeSession {
 
   onNetworkMaybeChanged(): void {
     if (!this.settings.enabled || this.holdOff) return
-    const fp = networkFingerprint()
+    const fp = networkFingerprint(undefined, this.phoneIp ?? this.lastKnownPhoneIp)
     if (fp === this.lastNetFp) return
-    log('netPoll', 'network changed fp %s → %s → connect(network-change)', this.lastNetFp, fp)
+    log('netPoll', 'network changed fp %s → %s', this.lastNetFp, fp)
     this.lastNetFp = fp
     this.idleDelayMs = BASE_WATCH_MS
     this.idleFailStreak = 0
-    void this.connect('network-change')
+    // If the current phone still answers, skip a full reconnect (VPN/hotspot churn).
+    void this.maybeReconnectOnNetworkChange()
+  }
+
+  private async maybeReconnectOnNetworkChange(): Promise<void> {
+    const ip = this.phoneIp ?? this.lastKnownPhoneIp
+    if (ip && (this.status === 'connected' || this.status === 'unstable')) {
+      const ok = await probeSocks5(
+        ip,
+        this.settings.socksPort,
+        HEALTH_PROBE_MS,
+        undefined,
+        socksAuthFromSettings(this.settings),
+      )
+      if (ok) {
+        log('netPoll', 'phone %s still reachable after fp change — skip reconnect', ip)
+        if (this.status === 'unstable') {
+          this.firstProbeFailAt = null
+          this.setStatus('connected')
+        }
+        return
+      }
+    }
+    log('netPoll', '→ connect(network-change)')
+    await this.connect('network-change')
   }
 
   startWatch(): void {
     if (this.watchRunning) return
     this.watchRunning = true
     this.watchAbort = new AbortController()
-    this.lastNetFp = networkFingerprint()
+    this.lastNetFp = networkFingerprint(undefined, this.phoneIp ?? this.lastKnownPhoneIp)
     this.idleFailStreak = 0
     log('watch', 'startWatch fp=%s (poll 3s)', this.lastNetFp)
     this.netPoll = setInterval(() => this.onNetworkMaybeChanged(), 3000)
@@ -477,23 +548,27 @@ export class BridgeSession {
     try {
       const auth = socksAuthFromSettings(this.settings)
       const preferredIps = preferredIpsFromSettings(this.settings, this.wifiSsid)
-      const coldProbe =
-        reason === 'startup' || reason === 'network-change' || reason === 'watchdog-lost'
+      // Cold probe only on boot / wake. watchdog-lost uses fast default + parallel poll.
+      const coldProbe = reason === 'startup' || reason === 'network-change'
 
       this.scanProgress = null
       log('runConnect', 'discovering… scanSubnet auth=%s timeout=%s', Boolean(auth), coldProbe ? COLD_PROBE_MS : 'default')
-      const found = await discoverPhones({
-        socksPort: this.settings.socksPort,
-        preferredIps,
-        manualIp: this.settings.manualIp,
-        signal: this.discoverAbort.signal,
-        auth,
-        timeoutMs: coldProbe ? COLD_PROBE_MS : undefined,
-        onProgress: (done, total, currentIp) => {
-          this.scanProgress = { done, total, currentIp }
-          if (done % 16 === 0) this.hooks.onChange()
-        },
-      })
+
+      const found =
+        reason === 'watchdog-lost'
+          ? await this.discoverWithFastRecovery(preferredIps, auth)
+          : await discoverPhones({
+              socksPort: this.settings.socksPort,
+              preferredIps,
+              manualIp: this.settings.manualIp,
+              signal: this.discoverAbort.signal,
+              auth,
+              timeoutMs: coldProbe ? COLD_PROBE_MS : undefined,
+              onProgress: (done, total, currentIp) => {
+                this.scanProgress = { done, total, currentIp }
+                if (done % 16 === 0) this.hooks.onChange()
+              },
+            })
       log('runConnect', 'discover DONE reason=%s found=%o scan=%o', reason, found, this.scanProgress)
 
       this.peers = found
@@ -537,11 +612,16 @@ export class BridgeSession {
         return false
       }
 
+      // After LOST, prefer lastKnown/recent over a stale manualIp that may still
+      // answer (or share a lease) while the phone moved to another address.
       const chosen = chooseDiscoveredPeer({
         found,
-        manualIp: this.settings.manualIp,
-        preferredIps,
-        currentIp: this.phoneIp,
+        manualIp: reason === 'watchdog-lost' ? null : this.settings.manualIp,
+        preferredIps: [
+          ...(this.lastKnownPhoneIp ? [this.lastKnownPhoneIp] : []),
+          ...preferredIps,
+        ],
+        currentIp: this.phoneIp ?? this.lastKnownPhoneIp,
       })
 
       if (!chosen) {
@@ -570,7 +650,8 @@ export class BridgeSession {
 
       await this.relay.start(chosen)
       this.phoneIp = chosen
-      this.probeFails = 0
+      this.lastKnownPhoneIp = chosen
+      this.firstProbeFailAt = null
       this.idleDelayMs = BASE_WATCH_MS
       this.idleFailStreak = 0
       await this.bindPeerToWifi(chosen)
@@ -590,6 +671,89 @@ export class BridgeSession {
     }
   }
 
+  /**
+   * After LOST: poll last/recent IPs every 2s while a normal (short-timeout) subnet
+   * scan runs. First hit from either path wins.
+   */
+  private async discoverWithFastRecovery(
+    preferredIps: string[],
+    auth: ReturnType<typeof socksAuthFromSettings>,
+  ): Promise<string[]> {
+    const parentSignal = this.discoverAbort!.signal
+    const localAbort = new AbortController()
+    const onParentAbort = () => localAbort.abort()
+    parentSignal.addEventListener('abort', onParentAbort, { once: true })
+    const signal = localAbort.signal
+
+    const uniq = [
+      ...new Set(
+        [
+          ...(this.lastKnownPhoneIp ? [this.lastKnownPhoneIp] : []),
+          ...preferredIps,
+          ...(this.settings.manualIp ? [this.settings.manualIp] : []),
+        ].filter(Boolean),
+      ),
+    ] as string[]
+
+    try {
+      const scanPromise = discoverPhones({
+        socksPort: this.settings.socksPort,
+        preferredIps,
+        manualIp: this.settings.manualIp,
+        signal,
+        auth,
+        onProgress: (done, total, currentIp) => {
+          this.scanProgress = { done, total, currentIp }
+          if (done % 16 === 0) this.hooks.onChange()
+        },
+      })
+
+      const pollPromise = (async (): Promise<string | null> => {
+        if (uniq.length === 0) return null
+        const deadline = Date.now() + FAST_RECOVERY_WINDOW_MS
+        while (!signal.aborted && Date.now() < deadline) {
+          for (const ip of uniq) {
+            if (signal.aborted) return null
+            const ok = await probeSocks5(
+              ip,
+              this.settings.socksPort,
+              FAST_RECOVERY_PROBE_MS,
+              signal,
+              auth,
+            )
+            if (ok) {
+              log('runConnect', 'fast-recovery HIT ip=%s', ip)
+              return ip
+            }
+          }
+          await sleep(FAST_RECOVERY_POLL_MS, signal)
+        }
+        return null
+      })()
+
+      return await new Promise<string[]>((resolve) => {
+        let done = false
+        const finish = (ips: string[]) => {
+          if (done) return
+          done = true
+          localAbort.abort()
+          resolve(ips)
+        }
+        void pollPromise.then((ip) => {
+          if (ip) finish([ip])
+        })
+        void scanPromise.then((found) => {
+          if (found.length > 0) finish(found)
+        })
+        void Promise.all([pollPromise, scanPromise]).then(([, found]) => {
+          finish(found)
+        })
+      })
+    } finally {
+      parentSignal.removeEventListener('abort', onParentAbort)
+    }
+  }
+
   private async watchLoop(): Promise<void> {
     const signal = this.watchAbort?.signal
     while (!this.disposed) {
@@ -599,7 +763,7 @@ export class BridgeSession {
       if (this.disposed || this.connectInFlight) continue
       if (!this.settings.enabled || this.holdOff) continue
 
-      if (this.status === 'connected' && this.phoneIp) {
+      if ((this.status === 'connected' || this.status === 'unstable') && this.phoneIp) {
         await this.healthCheck()
         continue
       }
@@ -620,34 +784,53 @@ export class BridgeSession {
 
     const trafficAge = Date.now() - this.relay.lastTrafficMs
     if (this.relay.lastTrafficMs > 0 && trafficAge < TRAFFIC_FRESH_MS) {
-      this.probeFails = 0
+      this.clearProbeGrace()
       return
     }
 
     const ok = await probeSocks5(
       this.phoneIp,
       this.settings.socksPort,
-      500,
+      HEALTH_PROBE_MS,
       undefined,
       socksAuthFromSettings(this.settings),
     )
     if (ok) {
-      this.probeFails = 0
+      this.clearProbeGrace()
       return
     }
 
-    this.probeFails += 1
-    log('healthCheck', 'probe FAIL phoneIp=%s fails=%d', this.phoneIp, this.probeFails)
-    if (this.probeFails < PROBE_FAILS_NEEDED) return
+    if (this.firstProbeFailAt == null) this.firstProbeFailAt = Date.now()
+    const silentMs = Date.now() - this.firstProbeFailAt
+    log(
+      'healthCheck',
+      'probe FAIL phoneIp=%s silentMs=%d (lost after %d)',
+      this.phoneIp,
+      silentMs,
+      LOST_AFTER_MS,
+    )
 
-    this.probeFails = 0
+    // Grace: keep relay on last IP so brief iPhone sleep does not drop clients.
+    if (!shouldDeclareLost({ firstFailAt: this.firstProbeFailAt, lostAfterMs: LOST_AFTER_MS })) {
+      if (this.status !== 'unstable') this.setStatus('unstable')
+      return
+    }
+
+    this.lastKnownPhoneIp = this.phoneIp
+    this.firstProbeFailAt = null
     this.phoneIp = null
     this.relay.setPhoneIp(null)
     this.setStatus('disconnected')
     this.notifyLostOnce()
-    log('healthCheck', 'LOST phone after %d fails → reconnect watchdog-lost', PROBE_FAILS_NEEDED)
+    log('healthCheck', 'LOST phone after %dms silence → reconnect watchdog-lost', silentMs)
     if (this.connectInFlight) return
     await this.connect('watchdog-lost')
+  }
+
+  private clearProbeGrace(): void {
+    const wasUnstable = this.status === 'unstable'
+    this.firstProbeFailAt = null
+    if (wasUnstable) this.setStatus('connected')
   }
 
   /** Soft cap when LAN is up (phone/TCC) so post-reboot retries stay responsive. */

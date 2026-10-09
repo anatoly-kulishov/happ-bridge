@@ -161,6 +161,25 @@ export class ProxyRelay {
         remote.pipe(client)
       })
 
+      // Fail fast when the phone is asleep / unreachable (macOS default can hang ~75s).
+      remote.setTimeout(REMOTE_CONNECT_MS)
+      remote.once('timeout', () => {
+        remote.destroy()
+        client.destroy()
+      })
+      remote.once('connect', () => {
+        remote.setTimeout(0)
+      })
+
+      try {
+        client.setNoDelay(true)
+        client.setKeepAlive(true, KEEP_ALIVE_MS)
+        remote.setNoDelay(true)
+        remote.setKeepAlive(true, KEEP_ALIVE_MS)
+      } catch {
+        // ignore - some platforms reject keepAlive before connect
+      }
+
       const pipe: ActivePipe = { client, remote }
 
       // Only remote bytes prove the phone is alive (client can write into a blackhole).
@@ -191,6 +210,9 @@ export class ProxyRelay {
     return server
   }
 }
+
+const REMOTE_CONNECT_MS = 5_000
+const KEEP_ALIVE_MS = 15_000
 
 function waitListen(server: net.Server): Promise<void> {
   return new Promise((resolve, reject) => {

@@ -53,18 +53,16 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
   const hitSet = new Set<string>()
   const probeMs = auth ? Math.max(timeoutMs, 500) : timeoutMs
 
-  const ordered: string[] = []
-  const seen = new Set<string>()
-  const push = (ip: string | null | undefined) => {
-    if (!ip || seen.has(ip)) return
-    seen.add(ip)
-    ordered.push(ip)
-  }
+  // Prefer recent/last/ssid peers before manualIp: a stale manual address with a
+  // long timeout used to delay every reconnect even when the phone was already found.
+  const ordered = orderedDiscoverIps(manualIp, preferredIps)
 
-  push(manualIp ?? null)
-  for (const ip of preferredIps) push(ip)
-
-  const hosts = scanSubnet ? prioritizedHosts(seen) : []
+  // Only scan /24s where we actually expect phones (recent/manual), not every
+  // secondary iface (USB tether / hotspot / VPN) — dual-/24 scans were ~510 hosts
+  // and made "no phone found" loops last many minutes.
+  const hosts = scanSubnet
+    ? prioritizedHosts(new Set(ordered), localSubnetHosts(undefined, ordered))
+    : []
   let probed = 0
   const total = ordered.length + hosts.length
   const tryOne = async (ip: string, abort?: AbortSignal): Promise<string | null> => {
@@ -92,14 +90,47 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
     hits.push(ip)
   }
 
-  const orderedResults = ordered.map((ip) => tryOne(ip, signal))
+  // Abort remaining preferred probes once any preferred IP answers — do not wait
+  // for a dead manualIp's full timeout when another peer already replied.
+  const preferredAbort = new AbortController()
+  const onOuterAbort = () => preferredAbort.abort()
+  signal?.addEventListener('abort', onOuterAbort, { once: true })
+  const orderedResults = ordered.map(async (ip) => {
+    const hit = await tryOne(ip, preferredAbort.signal)
+    if (hit) preferredAbort.abort()
+    return hit
+  })
   const subnetScan =
     scanSubnet ? scanAllHosts(hosts, tryOne, concurrency, signal) : Promise.resolve<string[]>([])
 
-  const [scannedOrdered, scannedSubnet] = await Promise.all([Promise.all(orderedResults), subnetScan])
-  for (const ip of scannedOrdered) record(ip)
-  for (const ip of scannedSubnet) record(ip)
+  try {
+    const [scannedOrdered, scannedSubnet] = await Promise.all([
+      Promise.all(orderedResults),
+      subnetScan,
+    ])
+    for (const ip of scannedOrdered) record(ip)
+    for (const ip of scannedSubnet) record(ip)
+  } finally {
+    signal?.removeEventListener('abort', onOuterAbort)
+  }
   return hits
+}
+
+/** Preferred (recent) first, then manualIp last if not already listed. */
+export function orderedDiscoverIps(
+  manualIp: string | null | undefined,
+  preferredIps: string[] = [],
+): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  const push = (ip: string | null | undefined) => {
+    if (!ip || seen.has(ip)) return
+    seen.add(ip)
+    out.push(ip)
+  }
+  for (const ip of preferredIps) push(ip)
+  push(manualIp ?? null)
+  return out
 }
 
 /** Prefer manual → listed preferred that are online → null. */
@@ -217,16 +248,71 @@ function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
-export function networkFingerprint(localIps = localIpv4Addresses()): string {
-  return [...localIps].sort().join(',')
+/**
+ * Stable LAN fingerprint. Prefer addresses on the phone's /24 so VPN / iPhone
+ * USB / hotspot interfaces do not trigger false network-change reconnects.
+ */
+export function networkFingerprint(
+  localIps = localIpv4Addresses(),
+  phoneIp?: string | null,
+): string {
+  let ips = localIps
+  if (phoneIp) {
+    const parts = phoneIp.split('.')
+    if (parts.length === 4) {
+      const prefix = `${parts[0]}.${parts[1]}.${parts[2]}.`
+      const sameSubnet = localIps.filter((ip) => ip.startsWith(prefix))
+      if (sameSubnet.length > 0) ips = sameSubnet
+    }
+  }
+  return [...ips].sort().join(',')
 }
 
-/** /24 hosts from local IPv4s, skipping self, .0 and .255. */
-export function localSubnetHosts(localIps = localIpv4Addresses()): string[] {
+/** How long probe failures may last before LOST (iPhone Wi‑Fi power-save blips). */
+export const LOST_AFTER_MS = 45_000
+
+/** True when phone silence has lasted long enough to declare LOST. */
+export function shouldDeclareLost(opts: {
+  firstFailAt: number | null
+  now?: number
+  lostAfterMs?: number
+}): boolean {
+  if (opts.firstFailAt == null) return false
+  const now = opts.now ?? Date.now()
+  const lostAfterMs = opts.lostAfterMs ?? LOST_AFTER_MS
+  return now - opts.firstFailAt >= lostAfterMs
+}
+
+/**
+ * /24 hosts from local IPv4s, skipping self, .0 and .255.
+ * When `focusIps` is set (recent/manual phones), only scan local interfaces that
+ * share a /24 with those IPs — ignore unrelated tether/VPN subnets.
+ */
+export function localSubnetHosts(
+  localIps = localIpv4Addresses(),
+  focusIps: string[] = [],
+): string[] {
+  const focusPrefixes = new Set<string>()
+  for (const ip of focusIps) {
+    const parts = ip.split('.')
+    if (parts.length !== 4) continue
+    focusPrefixes.add(`${parts[0]}.${parts[1]}.${parts[2]}`)
+  }
+
+  let scanLocals = localIps
+  if (focusPrefixes.size > 0) {
+    const matching = localIps.filter((ip) => {
+      const parts = ip.split('.')
+      if (parts.length !== 4) return false
+      return focusPrefixes.has(`${parts[0]}.${parts[1]}.${parts[2]}`)
+    })
+    if (matching.length > 0) scanLocals = matching
+  }
+
   const hosts: string[] = []
   const seen = new Set<string>()
 
-  for (const ip of localIps) {
+  for (const ip of scanLocals) {
     const parts = ip.split('.').map(Number)
     if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) continue
     const prefix = `${parts[0]}.${parts[1]}.${parts[2]}`

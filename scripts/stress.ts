@@ -10,14 +10,17 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const rounds = Math.max(1, Number(process.argv[2] || 3) || 3)
 
-const scripts = [
-  'scripts/selfcheck.ts',
-  ...fs
-    .readdirSync(path.join(root, 'scripts/adversarial'))
+function listAdversarial(): string[] {
+  const dir = path.join(root, 'scripts/adversarial')
+  if (!fs.existsSync(dir)) return []
+  return fs
+    .readdirSync(dir)
     .filter((f) => f.endsWith('.ts') && !f.startsWith('_'))
     .sort()
-    .map((f) => path.join('scripts/adversarial', f)),
-]
+    .map((f) => path.join('scripts/adversarial', f))
+}
+
+const scripts = ['scripts/selfcheck.ts', ...listAdversarial()]
 
 function run(script: string, timeoutMs = 20_000): Promise<void> {
   return new Promise((resolve, reject) => {

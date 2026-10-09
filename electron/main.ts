@@ -25,7 +25,7 @@ import { BridgeSession } from './session'
 import { socksAuthFromSettings, statusPresentation, traySecurityPresentation } from './types'
 import type { AppSettings, BridgeStatus } from './types'
 import { createUpdater } from './updater'
-import { log } from './log'
+import { log, logFilePath, readLogTail } from './log'
 
 const isDev = !app.isPackaged
 
@@ -253,8 +253,12 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
 
   ipcMain.handle('bridge:copyDiagnostics', async () => {
     const os = await import('node:os')
+    // Fresh checks so the report is useful even if the user never pressed «Запустить».
+    await session!.diagnose()
     const s = session!.getState()
+    const debug = session!.getDebugSnapshot()
     const stateForDebug = {
+      capturedAt: new Date().toISOString(),
       app: { version: app.getVersion() },
       runtime: {
         platform: process.platform,
@@ -291,8 +295,13 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
         homeSsids: s.settings.homeSsids,
         openAtLogin: s.settings.openAtLogin,
       },
+      debug,
       diagnostics: s.diagnostics,
       update: s.update,
+      log: {
+        path: logFilePath(),
+        tail: readLogTail(250),
+      },
     }
     const text = JSON.stringify(stateForDebug, null, 2)
     clipboard.writeText(text)

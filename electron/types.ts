@@ -1,4 +1,4 @@
-export type BridgeStatus = 'connected' | 'searching' | 'disconnected'
+export type BridgeStatus = 'connected' | 'unstable' | 'searching' | 'disconnected'
 
 export type InjectTargetId = 'cursor' | 'webstorm' | 'firefox'
 
@@ -119,6 +119,16 @@ export function statusPresentation(
         trayTip: phoneIp ? `Happ Bridge · ${phoneIp}` : 'Happ Bridge · подключено',
         badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
         dotClass: 'bg-emerald-400',
+      }
+    case 'unstable':
+      return {
+        tone: 'yellow',
+        label: phoneIp ? `Связь нестабильна · ${phoneIp}` : 'Связь нестабильна',
+        trayTip: phoneIp
+          ? `Happ Bridge · нестабильно · ${phoneIp}`
+          : 'Happ Bridge · связь нестабильна',
+        badgeClass: 'bg-amber-500/15 text-amber-200 border-amber-500/30',
+        dotClass: 'bg-amber-400',
       }
     case 'searching':
       return {

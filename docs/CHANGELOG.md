@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.7 - 2026-10-09
+
+### Fixed
+- **Connection**: короткие паузы телефона больше не рвут мост - grace ~45 с («Связь нестабильна»), затем быстрый опрос известных IP
+- **Discovery**: скан только /24, где уже бывали телефоны - не тратить время на tether/VPN-подсети
+- **Relay**: connect timeout 5 с + keepAlive/noDelay
+- **Support**: «Отчёт» включает debug-снимок и хвост `main.log`
+- **CI/tests**: `test:stress` не падает без `scripts/adversarial`
+
+### Changed
+- Логи форматируются через `util.format`
+
 ## 1.2.6 - 2026-10-08
 
 ### Fixed
