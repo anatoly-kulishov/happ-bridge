@@ -11,9 +11,26 @@ type ProgressEvt = {
   total: number
 }
 
+// ponytail: event surface is untyped; full AppUpdater import pulls heavy CJS types into ESM build
+type AutoUpdater = {
+  autoDownload: boolean
+  autoInstallOnAppQuit: boolean
+  disableDifferentialDownload: boolean
+  checkForUpdates: () => Promise<unknown>
+  quitAndInstall: (isSilent?: boolean, isForceRunAfter?: boolean) => void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on: (event: string, listener: (...args: any[]) => void) => void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  once: (event: string, listener: (...args: any[]) => void) => void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  removeListener: (event: string, listener: (...args: any[]) => void) => void
+}
+
 export function createUpdater(hooks: UpdateHooks): {
   check: () => Promise<UpdateInfo>
   getInfo: () => UpdateInfo
+  canInstall: () => boolean
+  install: () => boolean
 } {
   let info: UpdateInfo = {
     status: app.isPackaged ? 'idle' : 'dev',
@@ -21,14 +38,46 @@ export function createUpdater(hooks: UpdateHooks): {
       ? 'Обновления через GitHub Releases'
       : 'В режиме разработки автообновление отключено',
   }
+  let autoUpdater: AutoUpdater | null = null
+  let readyToInstall = false
 
   const emit = (next: UpdateInfo) => {
     info = next
     hooks.onChange(next)
   }
 
+  const loadUpdater = async (): Promise<AutoUpdater> => {
+    if (autoUpdater) return autoUpdater
+    // Dynamic import so dev/selfcheck does not require electron-updater at typecheck of scripts.
+    // electron-updater is CJS; in native-ESM build the named export isn't promoted by
+    // cjs-module-lexer, so read it off `default` when the named one is absent.
+    const mod = await import('electron-updater')
+    const resolved =
+      (mod.default as { autoUpdater?: AutoUpdater })?.autoUpdater ??
+      (mod as { autoUpdater?: AutoUpdater }).autoUpdater
+    if (!resolved) {
+      throw new Error('autoUpdater не найден: несовместимый экспорт electron-updater')
+    }
+    resolved.autoDownload = true
+    // Quit alone is unreliable with our before-quit cleanup; UI/tray call install().
+    resolved.autoInstallOnAppQuit = true
+    // macOS: blockmap-based differential downloads hang at 0% when the
+    // existing app.asar read or blockmap match silently fails. Force a
+    // full ZIP download so the updater actually pulls the file.
+    resolved.disableDifferentialDownload = true
+    autoUpdater = resolved
+    return resolved
+  }
+
   return {
     getInfo: () => info,
+    canInstall: () => readyToInstall && autoUpdater != null,
+    install: () => {
+      if (!autoUpdater || !readyToInstall) return false
+      // isForceRunAfter: relaunch after ShipIt replaces the .app
+      autoUpdater.quitAndInstall(false, true)
+      return true
+    },
     check: async () => {
       if (!app.isPackaged) {
         emit({
@@ -41,22 +90,7 @@ export function createUpdater(hooks: UpdateHooks): {
       emit({ status: 'checking', message: 'Проверяем обновления…' })
 
       try {
-        // Dynamic import so dev/selfcheck does not require electron-updater at typecheck of scripts.
-        // electron-updater is CJS; in native-ESM build the named export isn't promoted by
-        // cjs-module-lexer, so read it off `default` when the named one is absent.
-        const mod = await import('electron-updater')
-        const autoUpdater =
-          (mod.default as { autoUpdater?: typeof mod.autoUpdater })?.autoUpdater ??
-          mod.autoUpdater
-        if (!autoUpdater) {
-          throw new Error('autoUpdater не найден: несовместимый экспорт electron-updater')
-        }
-        autoUpdater.autoDownload = true
-        autoUpdater.autoInstallOnAppQuit = true
-        // macOS: blockmap-based differential downloads hang at 0% when the
-        // existing app.asar read or blockmap match silently fails. Force a
-        // full ZIP download so the updater actually pulls the file.
-        autoUpdater.disableDifferentialDownload = true
+        const updater = await loadUpdater()
 
         return await new Promise<UpdateInfo>((resolve) => {
           let settled = false
@@ -70,14 +104,14 @@ export function createUpdater(hooks: UpdateHooks): {
           }
 
           const detachCheckListeners = () => {
-            autoUpdater.removeListener('update-available', onAvailable)
-            autoUpdater.removeListener('update-not-available', onNot)
+            updater.removeListener('update-available', onAvailable)
+            updater.removeListener('update-not-available', onNot)
           }
 
           const detachDownloadListeners = () => {
-            autoUpdater.removeListener('download-progress', onProgress)
-            autoUpdater.removeListener('update-downloaded', onDownloaded)
-            autoUpdater.removeListener('error', onError)
+            updater.removeListener('download-progress', onProgress)
+            updater.removeListener('update-downloaded', onDownloaded)
+            updater.removeListener('error', onError)
           }
 
           const onProgress = (p: ProgressEvt) => {
@@ -93,9 +127,10 @@ export function createUpdater(hooks: UpdateHooks): {
 
           const onDownloaded = (u: { version: string }) => {
             detachDownloadListeners()
+            readyToInstall = true
             emit({
               status: 'available',
-              message: `Версия ${u.version} скачана — перезапустите приложение для установки.`,
+              message: `Версия ${u.version} скачана — нажмите «Установить».`,
               version: u.version,
               progress: 100,
             })
@@ -116,6 +151,7 @@ export function createUpdater(hooks: UpdateHooks): {
           const onNot = () => {
             detachCheckListeners()
             detachDownloadListeners()
+            readyToInstall = false
             finishCheck({
               status: 'not-available',
               message: `У вас актуальная версия ${app.getVersion()}`,
@@ -149,14 +185,14 @@ export function createUpdater(hooks: UpdateHooks): {
           detachCheckListeners()
           detachDownloadListeners()
 
-          autoUpdater.once('update-available', onAvailable)
-          autoUpdater.once('update-not-available', onNot)
+          updater.once('update-available', onAvailable)
+          updater.once('update-not-available', onNot)
           // Progress fires many times; downloaded/error must stay until finish.
-          autoUpdater.on('error', onError)
-          autoUpdater.on('download-progress', onProgress)
-          autoUpdater.on('update-downloaded', onDownloaded)
+          updater.on('error', onError)
+          updater.on('download-progress', onProgress)
+          updater.on('update-downloaded', onDownloaded)
 
-          void autoUpdater.checkForUpdates().catch((err: Error) => onError(err))
+          void updater.checkForUpdates().catch((err: Error) => onError(err))
         })
       } catch (err) {
         const raw = err instanceof Error ? err.message : String(err)

@@ -204,13 +204,24 @@ export function installDevMock() {
         ...state,
         update: {
           status: 'available',
-          message: 'Версия 1.2.1 скачана — перезапустите приложение для установки.',
+          message: 'Версия 1.2.1 скачана — нажмите «Установить».',
           version: '1.2.1',
           progress: 100,
         },
       }
       broadcast(state)
       return clone(state)
+    },
+    installUpdate: async (): Promise<void> => {
+      state = {
+        ...state,
+        update: {
+          status: 'not-available',
+          message: 'У вас актуальная версия 1.2.1',
+          version: '1.2.1',
+        },
+      }
+      broadcast(state)
     },
     injectStatus: async (): Promise<InjectTargetInfo[]> => clone(injectTargetsInfo),
     injectApply: async (targets: InjectTarget[]): Promise<InjectBatchResult> => {

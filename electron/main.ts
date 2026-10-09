@@ -35,6 +35,28 @@ let isQuitting = false
 let session: BridgeSession | null = null
 let lastTrayKey = ''
 let quitCleanupDone = false
+let updater: ReturnType<typeof createUpdater> | null = null
+let quitInFlight: Promise<void> | null = null
+
+/** Dispose session, then quitAndInstall when an update is ready (else plain quit). */
+function quitApp(): Promise<void> {
+  if (quitCleanupDone) {
+    app.quit()
+    return Promise.resolve()
+  }
+  if (quitInFlight) return quitInFlight
+  isQuitting = true
+  quitInFlight = (async () => {
+    try {
+      await session?.dispose()
+    } finally {
+      quitCleanupDone = true
+      if (updater?.canInstall() && updater.install()) return
+      app.quit()
+    }
+  })()
+  return quitInFlight
+}
 
 function broadcast(): void {
   if (!session) return
@@ -172,7 +194,7 @@ function syncTray(state: {
     : state.paused
       ? 'Happ Bridge · отключено вами'
       : sec.tip
-  const key = `${state.status}|${state.phoneIp ?? ''}|${sec.cacheKey}|${enabled ? 1 : 0}|${state.paused ? 1 : 0}`
+  const key = `${state.status}|${state.phoneIp ?? ''}|${sec.cacheKey}|${enabled ? 1 : 0}|${state.paused ? 1 : 0}|${updater?.canInstall() ? 1 : 0}`
   if (key === lastTrayKey) return
   lastTrayKey = key
 
@@ -215,10 +237,9 @@ function syncTray(state: {
       { label: 'Настройки…', click: () => createWindow(true) },
       { type: 'separator' },
       {
-        label: 'Выйти',
+        label: updater?.canInstall() ? 'Установить обновление и выйти' : 'Выйти',
         click: () => {
-          isQuitting = true
-          app.quit()
+          void quitApp()
         },
       },
     ]),
@@ -241,7 +262,7 @@ function applyOpenAtLogin(enabled: boolean): void {
   app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: true })
 }
 
-function registerIpc(updater: ReturnType<typeof createUpdater>): void {
+function registerIpc(): void {
   ipcMain.handle('bridge:getState', () => session!.getState())
 
   ipcMain.handle('bridge:findPhone', async () => {
@@ -341,9 +362,13 @@ function registerIpc(updater: ReturnType<typeof createUpdater>): void {
   ipcMain.handle('bridge:diagnose', async () => session!.diagnose())
 
   ipcMain.handle('bridge:checkUpdates', async () => {
-    const info = await updater.check()
+    const info = await updater!.check()
     session!.setUpdateInfo(info)
     return session!.getState()
+  })
+
+  ipcMain.handle('bridge:installUpdate', async () => {
+    void quitApp()
   })
 
   const injectStatusWithIcons = async (): Promise<InjectTargetInfo[]> => {
@@ -430,8 +455,12 @@ app.whenReady().then(async () => {
     app.getVersion(), process.versions.electron, process.versions.node, process.platform)
   if (process.platform === 'darwin') app.dock?.hide()
 
-  const updater = createUpdater({
-    onChange: (info) => session?.setUpdateInfo(info),
+  updater = createUpdater({
+    onChange: (info) => {
+      session?.setUpdateInfo(info)
+      // Refresh tray label when download finishes («Установить…»).
+      if (session) syncTray(session.getState())
+    },
   })
 
   session = await BridgeSession.create({
@@ -440,7 +469,7 @@ app.whenReady().then(async () => {
   })
   session.setUpdateInfo(updater.getInfo())
 
-  registerIpc(updater)
+  registerIpc()
   createTray()
   applyOpenAtLogin(session.getState().settings.openAtLogin)
 
@@ -460,16 +489,7 @@ app.whenReady().then(async () => {
 app.on('before-quit', (event) => {
   if (quitCleanupDone) return
   event.preventDefault()
-  isQuitting = true
-
-  void (async () => {
-    try {
-      await session?.dispose()
-    } finally {
-      quitCleanupDone = true
-      app.quit()
-    }
-  })()
+  void quitApp()
 })
 
 app.on('window-all-closed', () => {

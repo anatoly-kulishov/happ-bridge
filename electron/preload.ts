@@ -30,6 +30,7 @@ const api = {
   diagnose: (): Promise<BridgeState> => ipcRenderer.invoke('bridge:diagnose'),
   checkUpdates: (): Promise<BridgeState> =>
     ipcRenderer.invoke('bridge:checkUpdates'),
+  installUpdate: (): Promise<void> => ipcRenderer.invoke('bridge:installUpdate'),
   injectStatus: (): Promise<InjectTargetInfo[]> =>
     ipcRenderer.invoke('bridge:injectStatus'),
   injectApply: (targets: InjectTarget[]): Promise<InjectBatchResult> =>

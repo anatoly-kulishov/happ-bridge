@@ -62,6 +62,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
     copy,
     diagnose,
     checkUpdates,
+    installUpdate,
   } = useBridgeActions(onState)
 
   const openPortsSettings = () => {
@@ -589,6 +590,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
               update={state.update}
               checking={checkingUpdates}
               onCheck={() => void checkUpdates()}
+              onInstall={() => void installUpdate()}
             />
           </div>
         </Card>
@@ -625,10 +627,12 @@ function UpdateRow({
   update,
   checking,
   onCheck,
+  onInstall,
 }: {
   update: UpdateInfo
   checking: boolean
   onCheck: () => void
+  onInstall: () => void
 }) {
   const downloading = update.status === 'downloading'
   const busy = checking || update.status === 'checking' || downloading
@@ -675,15 +679,25 @@ function UpdateRow({
             </div>
           )}
         </div>
-        <button
-          type="button"
-          disabled={busy}
-          className="flex shrink-0 items-center gap-1 text-xs text-sky-400 transition-colors hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
-          onClick={onCheck}
-        >
-          <BusyIcon busy={busy && !downloading} icon={Sparkles} size={12} />
-          {downloading ? 'Скачиваем' : busy ? 'Проверяю…' : 'Проверить'}
-        </button>
+        {ready ? (
+          <button
+            type="button"
+            className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-400 transition-colors hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60"
+            onClick={onInstall}
+          >
+            Установить
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={busy}
+            className="flex shrink-0 items-center gap-1 text-xs text-sky-400 transition-colors hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+            onClick={onCheck}
+          >
+            <BusyIcon busy={busy && !downloading} icon={Sparkles} size={12} />
+            {downloading ? 'Скачиваем' : busy ? 'Проверяю…' : 'Проверить'}
+          </button>
+        )}
       </div>
     </div>
   )

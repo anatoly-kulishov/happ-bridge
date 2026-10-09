@@ -57,6 +57,10 @@ export function useBridgeActions(onState: (s: BridgeState) => void) {
     }
   }, [onState])
 
+  const installUpdate = useCallback(async () => {
+    await window.happBridge.installUpdate()
+  }, [])
+
   return {
     busy,
     diagnosing,
@@ -68,5 +72,6 @@ export function useBridgeActions(onState: (s: BridgeState) => void) {
     copy,
     diagnose,
     checkUpdates,
+    installUpdate,
   }
 }
