@@ -6,7 +6,7 @@ Set Telegram, Cursor, Firefox, and WebStorm to `127.0.0.1` once. When the phone 
 
 [Русский](#happ-bridge-рус) · [English](#happ-bridge-en) · [Download](#install) · [Site](https://anatoly-kulishov.github.io/happ-bridge/) · [Changelog](docs/CHANGELOG.md)
 
-**Текущая версия:** 1.2.8
+**Текущая версия:** 1.2.9
 
 ---
 
@@ -30,8 +30,12 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 - macOS (Apple Silicon) + телефон с Happ и включённым **«Разрешить LAN подключение»**
 - кто устал обновлять прокси в Telegram / Cursor / IDE после смены Wi‑Fi
 
-### Возможности (1.2.1)
+### Возможности (1.2.9)
 
+- **тёмная тема на дизайн-токенах** (`--hb-*`): единая палитра, аккуратные скругления и тени, системные шрифты и `color-scheme: dark`
+- **контраст и анти-скачки**: читабельный мелкий текст, не «убитый» disabled-вид, стабильная вёрстка при загрузке/поиске/прописке
+- **защита от потери данных**: при закрытии окна с несохранёнными настройками Happ Bridge спрашивает подтверждение
+- **развёрнутая диагностика подключения** в `main.log`: ошибки и таймауты перенаправления к телефону (с err-кодом), смена target, восстановление после «нестабильной» связи, время и «мусорные» IP скана
 - автопоиск Happ в Wi‑Fi; если телефонов несколько - список и выбор вручную
 - устойчивый поиск после перезагрузки Mac (ожидание Wi‑Fi, мягкий backoff, подсказка Local Network в диагностике)
 - один тумблер **«Мост к Happ»** - включение/отключение без дублирующих кнопок
@@ -94,7 +98,7 @@ npm test
 npm run dist
 ```
 
-Готовый файл: `release/Happ Bridge-1.2.1-arm64.dmg`
+Готовый файл: `release/Happ Bridge-1.2.9-arm64.dmg`
 
 Разработка: `npm run dev`
 
@@ -147,6 +151,8 @@ Electron · Vite · React · TypeScript · Tailwind
 ## Happ Bridge (EN)
 
 Stable localhost proxy bridge to a phone running Happ on your LAN. Stop editing proxy IPs in Telegram, Cursor, Firefox, and WebStorm every time DHCP moves your phone.
+
+**Version 1.2.9** - design-token dark theme (consistent palette, SF Pro Text, `color-scheme: dark`), better contrast & layout stability for loading/search/inject states, dirty-close confirmation, and deeper connection logging (relay target/errors/timeouts with errno, recovery after unstable link, stale preferred-IPs and sweep timing).
 
 **Version 1.2.1** - richer diagnostics: precise Happ reachability (auth-required / auth-failed / unreachable), end-to-end relay check, automatic subnet scan when phone IP changes, informative copyable report. Install script guards now give clear instructions instead of silent "No such file".
 
