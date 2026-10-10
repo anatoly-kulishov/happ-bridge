@@ -817,12 +817,11 @@ export class BridgeSession {
         void pollPromise.then((ip) => {
           if (ip) finish([ip])
         })
-        void scanPromise.then((found) => {
-          if (found.length > 0) finish(found)
-        })
-        void Promise.all([pollPromise, scanPromise]).then(([, found]) => {
-          finish(found)
-        })
+        // Resolve as soon as the sweep completes — do NOT wait out the full
+        // poll window (it runs up to FAST_RECOVERY_WINDOW_MS). Otherwise an
+        // empty result blocks every recovery for N seconds even when no phone
+        // is present, stalling the watchdog retry loop.
+        void scanPromise.then((found) => finish(found))
       })
     } finally {
       parentSignal.removeEventListener('abort', onParentAbort)
