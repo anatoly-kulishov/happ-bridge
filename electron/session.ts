@@ -577,12 +577,16 @@ export class BridgeSession {
       this.scanProgress = null
       log('runConnect', 'discovering… scanSubnet auth=%s timeout=%s', Boolean(auth), coldProbe ? COLD_PROBE_MS : 'default')
 
-      // startup / network-change / watchdog-lost: poll the known phone(s) every
-      // 2s (catching the moment a sleeping phone's TCP stack wakes) in parallel
-      // with the sweep. First hit from either path wins — no need to wait out a
-      // slow cold sweep before retrying.
+      // startup / network-change / watchdog-lost / watchdog-idle: poll the known
+      // phone(s) every 2s (catching the moment a sleeping phone's TCP stack wakes)
+      // in parallel with the sweep. First hit from either path wins — we never
+      // wait out a full sweep (a collect-all sweep with zero peers takes ~5s and
+      // stalls reconnects by that much after the phone returns).
       const useFastRecovery =
-        reason === 'startup' || reason === 'network-change' || reason === 'watchdog-lost'
+        reason === 'startup' ||
+        reason === 'network-change' ||
+        reason === 'watchdog-lost' ||
+        reason === 'watchdog-idle'
 
       const found =
         useFastRecovery
