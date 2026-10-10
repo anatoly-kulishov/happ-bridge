@@ -18,7 +18,7 @@ type RelayErrorHandler = (err: Error) => void
  */
 const abortSockets = new WeakMap<AbortSignal, Set<net.Socket>>()
 
-function trackAbortSocket(signal: AbortSignal | undefined, socket: net.Socket): () => void {
+export function trackAbortSocket(signal: AbortSignal | undefined, socket: net.Socket): () => void {
   if (!signal) return () => undefined
   let set = abortSockets.get(signal)
   if (!set) {

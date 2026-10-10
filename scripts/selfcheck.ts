@@ -13,6 +13,7 @@ import {
 import {
   chooseDiscoveredPeer,
   isIpv4Family,
+  livePreferredIps,
   localIpv4Addresses,
   localSubnetHosts,
   LOST_AFTER_MS,
@@ -21,8 +22,10 @@ import {
   prioritizedHosts,
   pickPreferredPhone,
   preferredIpsFromSettings,
+  sameNetwork,
   scanAllHosts,
   shouldDeclareLost,
+  subnetHostsFor,
 } from '../electron/discover'
 import {
   applyInject,
@@ -411,6 +414,34 @@ async function main() {
   const prio = prioritizedHosts(new Set(['192.168.1.10']), localSubnetHosts(['192.168.1.50']))
   assert.ok(!prio.includes('192.168.1.10'))
   assert.ok(prio.indexOf('192.168.1.5') < prio.indexOf('192.168.1.200'))
+
+  // livePreferredIps: keeps only preferred IPs sharing a /24 with a live local IP.
+  assert.deepEqual(
+    livePreferredIps(
+      ['192.168.1.5', '10.97.96.84', '192.168.1.9'],
+      ['192.168.1.50', '192.168.172.11'],
+    ),
+    ['192.168.1.5', '192.168.1.9'],
+  )
+  assert.deepEqual(livePreferredIps([], ['192.168.1.50']), [])
+  // Empty local I/F → nothing matches (nothing routable).
+  assert.deepEqual(livePreferredIps(['192.168.1.5']), [])
+
+  // Netmask-aware discovery: /16 and /23 are honored, not just /24.
+  assert.equal(sameNetwork('192.168.7.20', '192.168.5.10', 16), true)
+  assert.equal(sameNetwork('192.168.7.20', '192.168.5.10', 24), false)
+  assert.equal(sameNetwork('192.168.4.9', '192.168.5.10', 23), true)
+  assert.equal(sameNetwork('10.0.2.9', '10.0.0.5', 16), true)
+  assert.equal(sameNetwork('10.1.0.9', '10.0.0.5', 16), false)
+  // /23 scan covers 510 hosts across both /24 halves.
+  const s23 = subnetHostsFor('192.168.5.10', 23)
+  assert.equal(s23.length, 510)
+  assert.ok(s23.includes('192.168.4.9'))
+  assert.ok(s23.includes('192.168.5.9'))
+  // /16 sweep is capped back to /24 (sweep DoS guard), never explodes.
+  const s16 = localSubnetHosts([{ address: '192.168.5.10', maskBits: 16 }], [])
+  assert.ok(s16.length <= 254)
+  assert.ok(s16.includes('192.168.5.20'))
 
   const relay = new ProxyRelay({ socksPort: 39331, httpPort: 39332 })
   await relay.start('127.0.0.1')

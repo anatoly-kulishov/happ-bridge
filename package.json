@@ -33,7 +33,7 @@
     "test": "tsx scripts/selfcheck.ts",
     "test:adversarial": "tsx scripts/stress.ts 1",
     "test:stress": "tsx scripts/stress.ts 5",
-    "prepare:dmg": "bash scripts/prepare-dmg-installer.sh",
+    "prepare:dmg": "bash scripts/build-ssid.sh && bash scripts/prepare-dmg-installer.sh",
     "dist": "npm run prepare:dmg && npm run build && electron-builder --mac && bash scripts/publish-release.sh",
     "publish-release": "bash scripts/publish-release.sh"
   },
@@ -76,6 +76,13 @@
         "filter": [
           "*.png",
           "*@2x.png"
+        ]
+      },
+      {
+        "from": "resources/macos",
+        "to": ".",
+        "filter": [
+          "ssid"
         ]
       }
     ],

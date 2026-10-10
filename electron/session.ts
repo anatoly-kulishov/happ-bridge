@@ -1,12 +1,14 @@
-import { Notification } from 'electron'
+import { app, Notification } from 'electron'
 import { log } from './log'
 import { runDiagnostics } from './diagnostics'
 import {
   chooseDiscoveredPeer,
   discoverPhones,
+  livePreferredIps,
   localIpv4Addresses,
   networkFingerprint,
   preferredIpsFromSettings,
+  probeTcp,
   LOST_AFTER_MS,
   shouldDeclareLost,
   waitForLocalIpv4,
@@ -33,6 +35,7 @@ import {
   isHomeSsid,
   rememberSsidPeer,
   shouldWarnPublicNoAuth,
+  ssidHelperPath,
   wifiBridgeFlags,
 } from './wifi'
 
@@ -63,7 +66,12 @@ const RESUME_NET_WAIT_MS = 10_000
 /** After LOST, poll last/recent IPs this often while full scan runs. */
 const FAST_RECOVERY_POLL_MS = 2_000
 const FAST_RECOVERY_WINDOW_MS = 60_000
-const FAST_RECOVERY_PROBE_MS = 800
+/** TCP connect timeout while watching a waking phone (kernel accept is early). */
+const FAST_TCP_MS = 500
+/** How many SOCKS5 handshake attempts after a phone accepts TCP but stays silent. */
+const SOCKS_WAKE_RETRIES = 4
+/** SOCKS5 greeting timeout once the phone's kernel accepts TCP (app waking). */
+const SOCKS_WAKE_PROBE_MS = 1_500
 
 /** Human-readable Russian message for known Node error codes; unknown ⇒ raw message. */
 function presentError(err: unknown): string {
@@ -109,6 +117,8 @@ export class BridgeSession {
   private holdOff = false
   /** Last known phone IP kept across LOST for fast recovery polls. */
   private lastKnownPhoneIp: string | null = null
+  /** A known phone accepted TCP this recovery window but its SOCKS5 stayed silent. */
+  private tcpReachableButSilent = false
 
   private readonly relay: ProxyRelay
   private readonly hooks: SessionHooks
@@ -205,7 +215,19 @@ export class BridgeSession {
   }
 
   private async refreshWifi(): Promise<void> {
-    this.wifiSsid = await currentWifiSsid()
+    const helper = app.isPackaged
+      ? ssidHelperPath(process.resourcesPath)
+      : ssidHelperPath()
+    const ssid = await currentWifiSsid(helper)
+    // Persist a known SSID across transient nulls (macOS hides SSID behind
+    // Location Services; right after boot the network may also be mid-join).
+    if (ssid && ssid !== this.wifiSsid) {
+      log('wifi', 'ssid %s → %s (helper=%s)', this.wifiSsid ?? '(null)', ssid, helper ? 'yes' : 'no')
+      this.wifiSsid = ssid
+    } else if (ssid == null) {
+      log('wifi', 'ssid=null (Location Services не даёт SSID или сеть не поднята); keep=%s helper=%s',
+        this.wifiSsid ?? '(none)', helper ? 'yes' : 'no')
+    }
   }
 
   private async bindPeerToWifi(ip: string): Promise<void> {
@@ -528,6 +550,7 @@ export class BridgeSession {
     this.discoverAbort?.abort()
     this.discoverAbort = new AbortController()
     this.errorMessage = null
+    this.tcpReachableButSilent = false
     this.setStatus('searching')
 
     if (reason === 'startup') {
@@ -554,9 +577,20 @@ export class BridgeSession {
       this.scanProgress = null
       log('runConnect', 'discovering… scanSubnet auth=%s timeout=%s', Boolean(auth), coldProbe ? COLD_PROBE_MS : 'default')
 
+      // startup / network-change / watchdog-lost: poll the known phone(s) every
+      // 2s (catching the moment a sleeping phone's TCP stack wakes) in parallel
+      // with the sweep. First hit from either path wins — no need to wait out a
+      // slow cold sweep before retrying.
+      const useFastRecovery =
+        reason === 'startup' || reason === 'network-change' || reason === 'watchdog-lost'
+
       const found =
-        reason === 'watchdog-lost'
-          ? await this.discoverWithFastRecovery(preferredIps, auth)
+        useFastRecovery
+          ? await this.discoverWithFastRecovery(
+              preferredIps,
+              auth,
+              coldProbe ? COLD_PROBE_MS : undefined,
+            )
           : await discoverPhones({
               socksPort: this.settings.socksPort,
               preferredIps,
@@ -578,7 +612,13 @@ export class BridgeSession {
         await this.relay.stop()
         this.phoneIp = null
         this.setStatus('disconnected')
-        if (reason === 'user' || reason === 'watchdog-lost' || reason === 'network-change') {
+        // A known phone accepts TCP but its Happ app stays silent — almost always
+        // the OS suspended it with the screen locked. Give the user an actionable hint.
+        if (this.tcpReachableButSilent) {
+          this.errorMessage =
+            'Телефон в сети, но Happ не отвечает — вероятно, экран телефона заблокирован или Happ в фоне. Разблокируйте экран и откройте Happ.'
+          this.hooks.onChange()
+        } else if (reason === 'user' || reason === 'watchdog-lost' || reason === 'network-change') {
           this.notifyFail(reason)
         }
         if (reason === 'watchdog-idle') {
@@ -637,8 +677,15 @@ export class BridgeSession {
         return false
       }
 
-      const authCheck = await checkProxyAuth(chosen, this.settings.socksPort, 1000, auth)
-      log('runConnect', 'authCheck ip=%s → %s', chosen, authCheck)
+      // The chosen peer may have only just accepted TCP (phone waking); retry the
+      // auth handshake a few times so a half-asleep Happ still connects this cycle.
+      let authCheck: Awaited<ReturnType<typeof checkProxyAuth>> = 'unreachable'
+      for (let attempt = 1; attempt <= SOCKS_WAKE_RETRIES; attempt++) {
+        authCheck = await checkProxyAuth(chosen, this.settings.socksPort, 1000, auth)
+        log('runConnect', 'authCheck ip=%s attempt=%d → %s', chosen, attempt, authCheck)
+        if (authCheck === 'ok') break
+        if (attempt < SOCKS_WAKE_RETRIES) await sleep(500, this.discoverAbort?.signal)
+      }
       if (authCheck !== 'ok') {
         await this.relay.stop()
         this.phoneIp = null
@@ -672,34 +719,46 @@ export class BridgeSession {
   }
 
   /**
-   * After LOST: poll last/recent IPs every 2s while a normal (short-timeout) subnet
-   * scan runs. First hit from either path wins.
+   * Parallel digest of the "wake up" case (lock-screen phone / cold boot):
+   * poll the known phone(s) every 2s while the subnet sweep runs. A phone whose
+   * TCP stack just woke may accept a connection long before its Happ app answers
+   * the SOCKS5 greeting, so on a bare TCP accept we retry the handshake a few
+   * times (the retries themselves nudge the app awake). First hit from any path
+   * wins — we never wait out a slow cold sweep before retrying.
    */
   private async discoverWithFastRecovery(
     preferredIps: string[],
     auth: ReturnType<typeof socksAuthFromSettings>,
+    coldTimeoutMs?: number,
   ): Promise<string[]> {
     const parentSignal = this.discoverAbort!.signal
     const localAbort = new AbortController()
     const onParentAbort = () => localAbort.abort()
     parentSignal.addEventListener('abort', onParentAbort, { once: true })
     const signal = localAbort.signal
+    const socksPort = this.settings.socksPort
 
+    // Preferred/manual sorted: lastKnown first, then preferred on live subnets,
+    // then the raw manual IP (may be a valid manual override on a different net).
     const uniq = [
       ...new Set(
         [
           ...(this.lastKnownPhoneIp ? [this.lastKnownPhoneIp] : []),
+          ...livePreferredIps(preferredIps),
           ...preferredIps,
           ...(this.settings.manualIp ? [this.settings.manualIp] : []),
-        ].filter(Boolean),
+        ].filter(Boolean) as string[],
       ),
-    ] as string[]
+    ]
 
     try {
       const scanPromise = discoverPhones({
-        socksPort: this.settings.socksPort,
+        socksPort,
         preferredIps,
         manualIp: this.settings.manualIp,
+        // Sweep stays fast (350/500ms) even on cold boot; the long probe belongs
+        // to the known IPs we poll directly here (timeoutMs: cold when cold boot).
+        timeoutMs: coldTimeoutMs,
         signal,
         auth,
         onProgress: (done, total, currentIp) => {
@@ -708,23 +767,35 @@ export class BridgeSession {
         },
       })
 
+      // probeSocks5 with retries: kernel accepted TCP but Happ app is still waking.
+      const socksProbe = async (ip: string): Promise<boolean> => {
+        for (let i = 0; i < SOCKS_WAKE_RETRIES; i++) {
+          if (signal.aborted) return false
+          const ok = await probeSocks5(ip, socksPort, SOCKS_WAKE_PROBE_MS, signal, auth)
+          if (ok) return true
+          if (signal.aborted) return false
+          await sleep(400, signal)
+        }
+        return false
+      }
+
       const pollPromise = (async (): Promise<string | null> => {
         if (uniq.length === 0) return null
         const deadline = Date.now() + FAST_RECOVERY_WINDOW_MS
         while (!signal.aborted && Date.now() < deadline) {
           for (const ip of uniq) {
             if (signal.aborted) return null
-            const ok = await probeSocks5(
-              ip,
-              this.settings.socksPort,
-              FAST_RECOVERY_PROBE_MS,
-              signal,
-              auth,
-            )
-            if (ok) {
+            // Kernel-accept is the earliest reachability signal; skip straight to
+            // handshake retries when the radio is up, so we land the moment Happ
+            // actually starts answering.
+            const tcpOk = await probeTcp(ip, socksPort, FAST_TCP_MS)
+            if (!tcpOk) continue
+            if (await socksProbe(ip)) {
               log('runConnect', 'fast-recovery HIT ip=%s', ip)
               return ip
             }
+            this.tcpReachableButSilent = true
+            log('runConnect', 'fast-recovery TCP-up but Happ silent ip=%s', ip)
           }
           await sleep(FAST_RECOVERY_POLL_MS, signal)
         }
@@ -810,7 +881,7 @@ export class BridgeSession {
       LOST_AFTER_MS,
     )
 
-    // Grace: keep relay on last IP so brief iPhone sleep does not drop clients.
+    // Grace: keep relay on last IP so brief phone sleep does not drop clients.
     if (!shouldDeclareLost({ firstFailAt: this.firstProbeFailAt, lostAfterMs: LOST_AFTER_MS })) {
       if (this.status !== 'unstable') this.setStatus('unstable')
       return

@@ -1,11 +1,26 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import fs from 'node:fs'
+import path from 'node:path'
 import type { AppSettings } from './types'
 import { isIpv4 } from './types'
 
 const execFileAsync = promisify(execFile)
 
 const FALLBACK_WIFI_IFACES = ['en0', 'en1', 'en2']
+
+/**
+ * Resolve the bundled CoreLocation SSID helper, or null when unknown (tsx/dev).
+ * In the packaged .app it ships to Contents/Resources/ssid via extraResources.
+ */
+export function ssidHelperPath(resourcesPath?: string): string | null {
+  if (resourcesPath) {
+    const p = path.join(resourcesPath, 'ssid')
+    return fs.existsSync(p) ? p : null
+  }
+  const dev = path.join(__dirname, '..', 'resources', 'macos', 'ssid')
+  return fs.existsSync(dev) ? dev : null
+}
 
 /** Hardware ports labeled Wi‑Fi / AirPort from `networksetup -listallhardwareports`. */
 export async function wifiHardwareDevices(): Promise<string[]> {
@@ -39,8 +54,25 @@ async function ssidFromIface(iface: string): Promise<string | null> {
   return null
 }
 
-/** Current Wi‑Fi SSID on macOS, or null if not on Wi‑Fi / Location denied. */
-export async function currentWifiSsid(): Promise<string | null> {
+/** CoreLocation helper (real SSID once Location is granted); null on any miss. */
+async function ssidFromHelper(helperPath: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(helperPath, [], { timeout: 15_000 })
+    const value = stdout.trim().split('\n')[0] ?? ''
+    return value ? value : null
+  } catch {
+    return null
+  }
+}
+
+/** Current Wi‑Fi SSID on macOS, or null if not on Wi‑Fi / Location denied.
+ * Prefers the CoreLocation helper (attributed to the app bundle, real SSID);
+ * falls back to `networksetup` which hides SSID without Location Services. */
+export async function currentWifiSsid(helperPath?: string | null): Promise<string | null> {
+  if (helperPath) {
+    const ssid = await ssidFromHelper(helperPath)
+    if (ssid) return ssid
+  }
   const ifaces = await wifiHardwareDevices()
   const seen = new Set<string>()
   for (const iface of ifaces) {

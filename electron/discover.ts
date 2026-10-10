@@ -1,6 +1,6 @@
 import net from 'node:net'
 import os from 'node:os'
-import { probeSocks5, type SocksAuth } from './relay'
+import { probeSocks5, trackAbortSocket, type SocksAuth } from './relay'
 import { log } from './log'
 
 export type DiscoverOptions = {
@@ -9,6 +9,10 @@ export type DiscoverOptions = {
   manualIp?: string | null
   concurrency?: number
   timeoutMs?: number
+  /** Probe timeout for the bulk subnet sweep (not preferred IPs). Cold boot
+   * gives preferred IPs a long timeout to catch a sleepy phone, but the sweep
+   * must stay fast so a missed phone doesn't stall the retry cycle. */
+  sweepTimeoutMs?: number
   signal?: AbortSignal
   /** When false, only probe preferred/manual IPs (tests / narrow reconnect). */
   scanSubnet?: boolean
@@ -25,13 +29,39 @@ export async function discoverPhone(opts: DiscoverOptions): Promise<string | nul
   return pickPreferredPhone(found, opts.manualIp, opts.preferredIps) ?? found[0]
 }
 
-function probeTcp(host: string, port: number, timeoutMs: number): Promise<boolean> {
+/** Whether the host accepts TCP connections (kernel-accept — the earliest sign
+ * a sleeping phone is waking). A bare accept does not mean Happ answers yet.
+ * Abort-aware: cancelled probes settle fast and never report a hit. Uses the
+ * shared single-listener-per-signal tracker to avoid MaxListenersExceeded. */
+export function probeTcp(
+  host: string,
+  port: number,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<boolean> {
   return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve(false)
+      return
+    }
     const socket = new net.Socket()
-    const timer = setTimeout(() => { socket.destroy(); resolve(false) }, timeoutMs)
-    socket.connect(port, host, () => { clearTimeout(timer); socket.destroy(); resolve(true) })
-    socket.on('error', () => { clearTimeout(timer); socket.destroy(); resolve(false) })
-    socket.on('timeout', () => { clearTimeout(timer); socket.destroy(); resolve(false) })
+    let settled = false
+    const untrack = trackAbortSocket(signal, socket)
+    const timer = setTimeout(() => done(false), timeoutMs)
+    function done(ok: boolean) {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      untrack()
+      socket.destroy()
+      resolve(ok)
+    }
+    socket.on('connect', () => done(true))
+    socket.on('error', () => done(false))
+    socket.on('timeout', () => done(false))
+    // destroy() on abort emits 'close' (not always 'error') — settle fast.
+    socket.on('close', () => done(false))
+    socket.connect(port, host)
   })
 }
 
@@ -43,6 +73,7 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
     manualIp,
     concurrency = 64,
     timeoutMs = 350,
+    sweepTimeoutMs,
     signal,
     scanSubnet = true,
     auth = null,
@@ -51,11 +82,17 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
 
   const hits: string[] = []
   const hitSet = new Set<string>()
+  // Preferred/manual IPs deserve a long probe (a sleepy phone answers slow);
+  // the sweep stays quick so a failed find doesn't stall the retry cycle.
   const probeMs = auth ? Math.max(timeoutMs, 500) : timeoutMs
+  const sweepMs = auth
+    ? Math.max(sweepTimeoutMs ?? 500, 500)
+    : (sweepTimeoutMs ?? 350)
 
   // Prefer recent/last/ssid peers before manualIp: a stale manual address with a
   // long timeout used to delay every reconnect even when the phone was already found.
   const ordered = orderedDiscoverIps(manualIp, preferredIps)
+  const orderedSet = new Set(ordered)
 
   // Only scan /24s where we actually expect phones (recent/manual), not every
   // secondary iface (USB tether / hotspot / VPN) — dual-/24 scans were ~510 hosts
@@ -68,14 +105,15 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
   const tryOne = async (ip: string, abort?: AbortSignal): Promise<string | null> => {
     if (signal?.aborted || abort?.aborted) return null
     const start = Date.now()
-    const ok = await probeSocks5(ip, socksPort, probeMs, abort ?? signal, auth)
+    const hostMs = orderedSet.has(ip) ? probeMs : sweepMs
+    const ok = await probeSocks5(ip, socksPort, hostMs, abort ?? signal, auth)
     probed += 1
     onProgress?.(probed, total, ip)
     if (ok) {
       log('discover', 'HIT ip=%s rtt=%dms', ip, Date.now() - start)
     } else {
       if (ordered.includes(ip)) log('discover', 'UDP probe failed ip=%s rtt=%dms, trying TCP…', ip, Date.now() - start)
-      const tcpOk = await probeTcp(ip, socksPort, 1000)
+      const tcpOk = await probeTcp(ip, socksPort, 1000, abort ?? signal)
       if (tcpOk) log('discover', 'TCP fallback HIT ip=%s', ip)
       if (signal?.aborted || abort?.aborted) return null
       return tcpOk ? ip : null
@@ -210,6 +248,85 @@ export function localIpv4Addresses(
   return result
 }
 
+/** Local IPv4 endpoint with its real netmask length (CIDR host bits, e.g. 24/16/23). */
+export type LocalIpInfo = { address: string; maskBits: number }
+
+function ipv4Parts(ip: string): number[] | null {
+  const p = ip.split('.').map(Number)
+  if (p.length !== 4 || p.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return null
+  return p
+}
+
+/** True when two IPv4s belong to the same network given a CIDR mask length. */
+export function sameNetwork(a: string, b: string, maskBits: number): boolean {
+  const pa = ipv4Parts(a)
+  const pb = ipv4Parts(b)
+  if (!pa || !pb) return false
+  const bits = Math.min(Math.max(maskBits, 0), 32)
+  const ma = (((pa[0] << 24) | (pa[1] << 16) | (pa[2] << 8) | pa[3]) >>> 0)
+  const mb = (((pb[0] << 24) | (pb[1] << 16) | (pb[2] << 8) | pb[3]) >>> 0)
+  const mask = bits === 0 ? 0 : ((0xffffffff << (32 - bits)) >>> 0)
+  return (ma & mask) === (mb & mask)
+}
+
+/** Dotted netmask → CIDR host bits (255.255.255.0 → 24). */
+function netmaskToBits(netmask: string | undefined): number | null {
+  if (!netmask) return null
+  const parts = netmask.split('.').map(Number)
+  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return null
+  let bits = 0
+  for (let i = 0; i < 4; i++) {
+    const n = parts[i]
+    for (let b = 7; b >= 0; b--) {
+      if (n & (1 << b)) bits++
+    }
+  }
+  return bits
+}
+
+/** Real netmask/cidr for a local address (from os.networkInterfaces), or null if unknown. */
+export function maskBitsOf(
+  address: string,
+  nets: NodeJS.Dict<os.NetworkInterfaceInfo[]> | undefined = os.networkInterfaces(),
+): number | null {
+  for (const entries of Object.values(nets ?? {})) {
+    if (!entries) continue
+    for (const entry of entries) {
+      if (!isIpv4Family(entry.family) || entry.internal) continue
+      if (entry.address !== address) continue
+      const m = /\/(\d+)$/.exec(entry.cidr ?? '')
+      if (m) return Number(m[1])
+      return netmaskToBits(entry.netmask)
+    }
+  }
+  return null
+}
+
+/** All hosts in a subnet (CIDR host bits) except the given self address. */
+export function subnetHostsFor(ip: string, maskBits: number): string[] {
+  const p = ipv4Parts(ip)
+  if (!p || maskBits < 0 || maskBits > 32) return []
+  const base = (((p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3]) >>> 0)
+  const mask = maskBits === 0 ? 0 : ((0xffffffff << (32 - maskBits)) >>> 0)
+  const network = base & mask
+  const width = 1 << (32 - maskBits)
+  const hosts: string[] = []
+  // skip network address (host 0) and broadcast (host last)
+  for (let i = 1; i < width - 1; i++) {
+    const addr = (network + i) >>> 0
+    hosts.push(`${addr >>> 24}.${(addr >>> 16) & 0xff}.${(addr >>> 8) & 0xff}.${addr & 0xff}`)
+  }
+  return hosts
+}
+
+/** Normalize mixed string[] / LocalIpInfo[] inputs, resolving real masks for bare addresses. */
+function normLocals(locals: Array<string | LocalIpInfo>): LocalIpInfo[] {
+  return locals.map((l) => {
+    if (typeof l === 'string') return { address: l, maskBits: maskBitsOf(l) ?? 24 }
+    return l
+  })
+}
+
 /** Poll until a non-internal IPv4 appears (cold boot / wake), or timeout. */
 export async function waitForLocalIpv4(opts?: {
   timeoutMs?: number
@@ -249,7 +366,7 @@ function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
- * Stable LAN fingerprint. Prefer addresses on the phone's /24 so VPN / iPhone
+ * Stable LAN fingerprint. Prefer addresses on the phone's /24 so VPN / phone
  * USB / hotspot interfaces do not trigger false network-change reconnects.
  */
 export function networkFingerprint(
@@ -268,7 +385,7 @@ export function networkFingerprint(
   return [...ips].sort().join(',')
 }
 
-/** How long probe failures may last before LOST (iPhone Wi‑Fi power-save blips). */
+/** How long probe failures may last before LOST (phone Wi‑Fi power-save blips). */
 export const LOST_AFTER_MS = 45_000
 
 /** True when phone silence has lasted long enough to declare LOST. */
@@ -284,41 +401,64 @@ export function shouldDeclareLost(opts: {
 }
 
 /**
- * /24 hosts from local IPv4s, skipping self, .0 and .255.
+ * Preferred IPs that belong to a live non-internal local subnet (using the real
+ * netmask, not a hardcoded /24), in order. Filters stale addresses from old
+ * networks (e.g. a phone previously seen on a VPN subnet that is down now) so
+ * recovery polling does not burn time on hosts that cannot be routed from the
+ * current interfaces. When the VPN is up its utun IPv4 is a live interface, so
+ * a VPN-routable phone is still kept. A peer anywhere in the same /16, /23 etc.
+ * is kept, not just same-/24.
+ */
+export function livePreferredIps(
+  preferredIps: string[],
+  localIps: Array<string | LocalIpInfo> = localIpv4Addresses(),
+): string[] {
+  const locals = normLocals(localIps)
+  const out: string[] = []
+  for (const ip of preferredIps) {
+    if (ipv4Parts(ip) === null) continue
+    if (locals.some((li) => sameNetwork(ip, li.address, li.maskBits))) out.push(ip)
+  }
+  return out
+}
+
+// Cap the broad-sweep host list. On a /24 that is 254 hosts; /23 → 510; /22 →
+// 1022. Subnets wider than this are not swept exhaustively (a /16 sweep would
+// be ~65k hosts / minutes). Phones on such broad nets are still covered by the
+// netmask-aware livePreferredIps recovery poll.
+export const MAX_SUBNET_HOSTS = 1024
+
+/**
+ * Hosts on the real local subnets (netmask-aware), skipping self, .0 and .255.
  * When `focusIps` is set (recent/manual phones), only scan local interfaces that
- * share a /24 with those IPs — ignore unrelated tether/VPN subnets.
+ * share a mask with those IPs — ignore unrelated tether/VPN subnets. Subnets
+ * broader than MAX_SUBNET_HOSTS fall back to their own /24 to avoid a sweep DoS.
  */
 export function localSubnetHosts(
-  localIps = localIpv4Addresses(),
+  localIps: Array<string | LocalIpInfo> = localIpv4Addresses(),
   focusIps: string[] = [],
 ): string[] {
-  const focusPrefixes = new Set<string>()
-  for (const ip of focusIps) {
-    const parts = ip.split('.')
-    if (parts.length !== 4) continue
-    focusPrefixes.add(`${parts[0]}.${parts[1]}.${parts[2]}`)
-  }
+  let scanLocals = normLocals(localIps)
 
-  let scanLocals = localIps
-  if (focusPrefixes.size > 0) {
-    const matching = localIps.filter((ip) => {
-      const parts = ip.split('.')
-      if (parts.length !== 4) return false
-      return focusPrefixes.has(`${parts[0]}.${parts[1]}.${parts[2]}`)
-    })
+  if (focusIps.length > 0) {
+    const matching = scanLocals.filter((li) =>
+      focusIps.some((f) => ipv4Parts(f) !== null && sameNetwork(f, li.address, li.maskBits)),
+    )
     if (matching.length > 0) scanLocals = matching
   }
 
   const hosts: string[] = []
   const seen = new Set<string>()
 
-  for (const ip of scanLocals) {
-    const parts = ip.split('.').map(Number)
-    if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) continue
-    const prefix = `${parts[0]}.${parts[1]}.${parts[2]}`
-    for (let i = 1; i <= 254; i++) {
-      const host = `${prefix}.${i}`
-      if (host === ip || seen.has(host)) continue
+  for (const li of scanLocals) {
+    // Decide up front (before building a potentially huge array) whether the real
+    // subnet fits under the cap; wider nets fall back to the local /24 to avoid a
+    // sweep DoS while the netmask-aware livePreferredIps poll still covers them.
+    const width = li.maskBits >= 32 ? 2 : 1 << (32 - li.maskBits)
+    const maskBits =
+      width <= MAX_SUBNET_HOSTS + 2 ? li.maskBits : 24
+    for (const host of subnetHostsFor(li.address, maskBits)) {
+      if (host === li.address || seen.has(host)) continue
       seen.add(host)
       hosts.push(host)
     }

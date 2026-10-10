@@ -9,3 +9,5 @@ release
 .env.*
 *.local
 .vite
+# CoreLocation SSID helper build artifact (source: native/ssid.swift)
+resources/macos/ssid
