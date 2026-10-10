@@ -13,19 +13,19 @@ type Props = {
 
 const toneClass: Record<AlertTone, { box: string; icon: string; title: string; body: string }> = {
   danger: {
-    box: 'border-red-500/35 bg-red-500/10',
+    box: 'border-red-400/25 bg-[var(--hb-danger-soft)]',
     icon: 'text-red-300',
     title: 'text-red-50',
     body: 'text-red-100/75',
   },
   warning: {
-    box: 'border-amber-500/35 bg-amber-500/10',
+    box: 'border-amber-400/25 bg-[var(--hb-warn-soft)]',
     icon: 'text-amber-300',
     title: 'text-amber-50',
     body: 'text-amber-100/75',
   },
   success: {
-    box: 'border-emerald-500/35 bg-emerald-500/10',
+    box: 'border-emerald-400/25 bg-[var(--hb-ok-soft)]',
     icon: 'text-emerald-300',
     title: 'text-emerald-50',
     body: 'text-emerald-100/75',
@@ -57,10 +57,18 @@ export function AlertBanner({
 }: Props) {
   const t = toneClass[tone]
   const Glyph = Icon ?? defaultIcon(tone)
+  const toneHint =
+    tone === 'danger'
+      ? 'Ошибка'
+      : tone === 'warning'
+        ? 'Внимание'
+        : 'Успешно'
   return (
-    <div className={`rounded-xl border p-3 ${t.box}`} role="alert">
+    <div className={`rounded-xl border p-3.5 ${t.box}`} role="alert" title={title}>
       <div className="flex items-start gap-2.5">
-        <Glyph size={18} className={`mt-0.5 shrink-0 ${t.icon}`} aria-hidden />
+        <span className="mt-0.5 shrink-0" title={toneHint} aria-hidden>
+          <Glyph size={18} className={t.icon} />
+        </span>
         <div className="min-w-0 flex-1">
           <p className={`text-sm font-medium tracking-tight ${t.title}`}>{title}</p>
           {children && (
@@ -171,6 +179,15 @@ export function parseBridgeError(error: string): ParsedBridgeError {
     return {
       kind: 'guidance',
       title: 'Выберите телефон',
+      body: trimmed,
+      tone: 'warning',
+    }
+  }
+
+  if (/другой сети \(VPN/i.test(trimmed) || /Дождитесь подключения VPN/i.test(trimmed)) {
+    return {
+      kind: 'guidance',
+      title: 'Ждём сеть телефона',
       body: trimmed,
       tone: 'warning',
     }

@@ -1,6 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Happ Bridge">
-  <path d="M12 38h40" stroke="#38bdf8" stroke-width="3" stroke-linecap="round"/>
-  <path d="M16 38c0-10 6-16 16-16s16 6 16 16" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" fill="none"/>
-  <path d="M20 38v10M32 38v10M44 38v10" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
-  <circle cx="32" cy="22" r="3.5" fill="#38bdf8"/>
+  <defs>
+    <linearGradient id="mark" x1="32" y1="12" x2="32" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7dd3fc"/>
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+  </defs>
+  <g stroke="url(#mark)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 36c0-10 6-16 18-16s18 6 18 16"/>
+    <path d="M12 36h40"/>
+    <path d="M20 36v12M32 36v12M44 36v12"/>
+  </g>
+  <circle cx="32" cy="20" r="3.25" fill="url(#mark)"/>
 </svg>

@@ -95,10 +95,31 @@ function createWindow(show = true): void {
   }
 
   mainWindow.on('close', (e) => {
-    if (!isQuitting) {
-      e.preventDefault()
-      mainWindow?.hide()
-    }
+    if (isQuitting) return
+    e.preventDefault()
+    const win = mainWindow
+    if (!win) return
+    void (async () => {
+      try {
+        const dirty = await win.webContents.executeJavaScript(
+          'Boolean(window.__hbDirty)',
+        )
+        if (dirty) {
+          const { response } = await dialog.showMessageBox(win, {
+            type: 'warning',
+            buttons: ['Скрыть', 'Отмена'],
+            defaultId: 1,
+            cancelId: 1,
+            message: 'Есть несохранённые изменения',
+            detail: 'Скрытие окна их не сохранит. Нажмите «Сохранить» в панели, если нужно.',
+          })
+          if (response === 1) return
+        }
+      } catch {
+        // Renderer may be mid-reload; hide anyway.
+      }
+      if (!isQuitting) win.hide()
+    })()
   })
 
   mainWindow.on('closed', () => {

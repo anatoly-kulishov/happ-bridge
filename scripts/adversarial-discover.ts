@@ -5,6 +5,7 @@
  * Guarantees:
  *  - livePreferredIps keeps a peer anywhere in the same real subnet (not just /24).
  *  - localSubnetHosts enumerates the real subnet (a /23 sibling is swept).
+ *  - unfocusedSubnetHosts returns the iface a focused scan would skip.
  *  - probeTcp is abort-aware: a cancelled probe never reports a hit.
  */
 import assert from 'node:assert/strict'
@@ -12,8 +13,10 @@ import net from 'node:net'
 import {
   livePreferredIps,
   localSubnetHosts,
+  networkFingerprint,
   probeTcp,
   subnetHostsFor,
+  unfocusedSubnetHosts,
 } from '../electron/discover'
 
 const results: string[] = []
@@ -65,6 +68,25 @@ async function main() {
     const hosts = localSubnetHosts([{ address: '192.168.5.10', maskBits: 16 }], [])
     assert.ok(hosts.length <= 254)
     assert.ok(hosts.includes('192.168.5.20'))
+  })
+
+  // Late VPN: focused Wi‑Fi miss leaves utun hosts for the fallback sweep.
+  await expect('unfocusedSubnetHosts returns skipped VPN iface', () => {
+    const locals = [
+      { address: '192.168.0.212', maskBits: 24 },
+      { address: '192.168.132.107', maskBits: 22 },
+    ]
+    const skipped = unfocusedSubnetHosts(['192.168.0.209'], locals)
+    assert.ok(skipped.some((ip) => ip.startsWith('192.168.132.')), `got ${skipped.length}`)
+    assert.ok(!skipped.some((ip) => ip.startsWith('192.168.0.')))
+  })
+
+  // Fingerprint must change when utun appears alongside Wi‑Fi.
+  await expect('networkFingerprint includes all ifaces', () => {
+    assert.notEqual(
+      networkFingerprint(['192.168.0.212']),
+      networkFingerprint(['192.168.0.212', '192.168.132.107']),
+    )
   })
 
   // probeTcp is abort-aware: a pre-aborted probe must resolve false (no fabricated hit).

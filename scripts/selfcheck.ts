@@ -26,6 +26,8 @@ import {
   scanAllHosts,
   shouldDeclareLost,
   subnetHostsFor,
+  unfocusedSubnetHosts,
+  waitForPhoneRoute,
 } from '../electron/discover'
 import {
   applyInject,
@@ -209,25 +211,48 @@ async function main() {
   ])
   assert.deepEqual(orderedDiscoverIps('10.0.0.1', []), ['10.0.0.1'])
 
-  // Fingerprint ignores secondary iface when phone /24 is known.
+  // Fingerprint includes all ifaces so late VPN/utun triggers netPoll.
   assert.equal(
-    networkFingerprint(['192.168.0.212', '192.168.172.11'], '192.168.0.209'),
-    '192.168.0.212',
+    networkFingerprint(['192.168.0.212', '192.168.172.11']),
+    '192.168.0.212,192.168.172.11',
   )
   assert.equal(
-    networkFingerprint(['192.168.0.212', '10.0.0.5'], null),
+    networkFingerprint(['192.168.0.212', '10.0.0.5']),
     '10.0.0.5,192.168.0.212',
+  )
+  assert.notEqual(
+    networkFingerprint(['192.168.0.212']),
+    networkFingerprint(['192.168.0.212', '192.168.132.107']),
   )
 
   // Dual iface: focus recent phone /24, do not scan tether/VPN subnet.
   {
-    const focused = localSubnetHosts(
-      ['192.168.0.212', '192.168.157.182'],
-      ['192.168.0.209', '192.168.0.208'],
-    )
+    const locals = [
+      { address: '192.168.0.212', maskBits: 24 },
+      { address: '192.168.157.182', maskBits: 24 },
+    ]
+    const focused = localSubnetHosts(locals, ['192.168.0.209', '192.168.0.208'])
     assert.equal(focused.length, 253)
     assert.ok(focused.includes('192.168.0.209'))
     assert.ok(!focused.some((ip) => ip.startsWith('192.168.157.')))
+
+    // Fallback hosts = the iface focus skipped (VPN/tether).
+    const skipped = unfocusedSubnetHosts(['192.168.0.209', '192.168.0.208'], locals)
+    assert.equal(skipped.length, 253)
+    assert.ok(skipped.every((ip) => ip.startsWith('192.168.157.')))
+    assert.deepEqual(unfocusedSubnetHosts([], locals), [])
+    assert.deepEqual(unfocusedSubnetHosts(['10.0.0.1'], locals), [])
+  }
+
+  // waitForPhoneRoute with no preferred peers returns as soon as any IPv4 exists.
+  {
+    const ips = await waitForPhoneRoute({
+      preferredIps: [],
+      ipv4TimeoutMs: 2_000,
+      routeTimeoutMs: 1_000,
+      pollMs: 50,
+    })
+    assert.ok(Array.isArray(ips))
   }
   assert.equal(
     traySecurityPresentation({

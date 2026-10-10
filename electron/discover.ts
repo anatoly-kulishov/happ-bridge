@@ -100,8 +100,18 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
   const hosts = scanSubnet
     ? prioritizedHosts(new Set(ordered), localSubnetHosts(undefined, ordered))
     : []
+  const livePreferred = livePreferredIps(ordered)
+  const stalePreferred = ordered.filter((ip) => !livePreferred.includes(ip))
   let probed = 0
-  const total = ordered.length + hosts.length
+  let total = ordered.length + hosts.length
+  if (stalePreferred.length > 0) {
+    log('discover', 'preferred off-net (stale, not routed): %o — sweep %d hosts / total %d',
+      stalePreferred, hosts.length, total)
+  } else {
+    log('discover', 'probe scope: preferred=%d (live=%d) sweep=%d total=%d',
+      ordered.length, livePreferred.length, hosts.length, total)
+  }
+  const discoverStart = Date.now()
   const tryOne = async (ip: string, abort?: AbortSignal): Promise<string | null> => {
     if (signal?.aborted || abort?.aborted) return null
     const start = Date.now()
@@ -148,9 +158,29 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
     ])
     for (const ip of scannedOrdered) record(ip)
     for (const ip of scannedSubnet) record(ip)
+
+    // Focused miss + other live ifaces (late VPN): one fallback sweep of the
+    // interfaces that focus skipped. Preferred/manual were already probed above.
+    if (hits.length === 0 && scanSubnet && !signal?.aborted) {
+      const extraHosts = prioritizedHosts(
+        new Set([...ordered, ...hosts]),
+        unfocusedSubnetHosts(ordered),
+      )
+      if (extraHosts.length > 0) {
+        total += extraHosts.length
+        log(
+          'discover',
+          'focused miss — fallback sweep %d hosts on other iface(s)',
+          extraHosts.length,
+        )
+        const scannedExtra = await scanAllHosts(extraHosts, tryOne, concurrency, signal)
+        for (const ip of scannedExtra) record(ip)
+      }
+    }
   } finally {
     signal?.removeEventListener('abort', onOuterAbort)
   }
+  log('discover', 'done probed=%d hosts=%d hits=%o in %dms', probed, total, hits, Date.now() - discoverStart)
   return hits
 }
 
@@ -347,6 +377,47 @@ export async function waitForLocalIpv4(opts?: {
   }
 }
 
+/**
+ * After first IPv4: if preferred/manual peers exist but none share a live local
+ * subnet (typical late OpenVPN / utun), keep polling until a covering iface
+ * appears or `routeTimeoutMs` elapses. Does not replace FAST_RECOVERY_WINDOW —
+ * covers "VPN later than ~60s" so netPoll/discover can see the route.
+ */
+export async function waitForPhoneRoute(opts?: {
+  preferredIps?: string[]
+  /** Wait for first IPv4 (same as waitForLocalIpv4). */
+  ipv4TimeoutMs?: number
+  /** Extra wait for a route covering preferred IPs. */
+  routeTimeoutMs?: number
+  pollMs?: number
+  signal?: AbortSignal
+}): Promise<string[]> {
+  const pollMs = opts?.pollMs ?? 500
+  const signal = opts?.signal
+  const preferred = (opts?.preferredIps ?? []).filter((ip) => ipv4Parts(ip) !== null)
+
+  await waitForLocalIpv4({
+    timeoutMs: opts?.ipv4TimeoutMs ?? 25_000,
+    pollMs,
+    signal,
+  })
+  if (signal?.aborted || preferred.length === 0) return localIpv4Addresses()
+  if (livePreferredIps(preferred).length > 0) return localIpv4Addresses()
+
+  const routeTimeoutMs = opts?.routeTimeoutMs ?? 45_000
+  const deadline = Date.now() + routeTimeoutMs
+  log('discover', 'waitForPhoneRoute: preferred off-route, waiting up to %dms…', routeTimeoutMs)
+  while (!signal?.aborted && Date.now() < deadline) {
+    await sleepMs(Math.min(pollMs, Math.max(0, deadline - Date.now())), signal)
+    if (signal?.aborted) break
+    if (livePreferredIps(preferred).length > 0) {
+      log('discover', 'waitForPhoneRoute: route up localIps=%o', localIpv4Addresses())
+      return localIpv4Addresses()
+    }
+  }
+  return localIpv4Addresses()
+}
+
 function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     if (signal?.aborted || ms <= 0) {
@@ -366,23 +437,12 @@ function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
- * Stable LAN fingerprint. Prefer addresses on the phone's /24 so VPN / phone
- * USB / hotspot interfaces do not trigger false network-change reconnects.
+ * Stable LAN fingerprint over all non-internal IPv4s. Includes VPN/utun so a
+ * late OpenVPN connect after reboot triggers netPoll reconnect (phone-/24
+ * filtering previously hid utun when the remembered peer was on Wi‑Fi).
  */
-export function networkFingerprint(
-  localIps = localIpv4Addresses(),
-  phoneIp?: string | null,
-): string {
-  let ips = localIps
-  if (phoneIp) {
-    const parts = phoneIp.split('.')
-    if (parts.length === 4) {
-      const prefix = `${parts[0]}.${parts[1]}.${parts[2]}.`
-      const sameSubnet = localIps.filter((ip) => ip.startsWith(prefix))
-      if (sameSubnet.length > 0) ips = sameSubnet
-    }
-  }
-  return [...ips].sort().join(',')
+export function networkFingerprint(localIps = localIpv4Addresses()): string {
+  return [...localIps].sort().join(',')
 }
 
 /** How long probe failures may last before LOST (phone Wi‑Fi power-save blips). */
@@ -465,6 +525,27 @@ export function localSubnetHosts(
   }
 
   return hosts
+}
+
+/**
+ * Hosts on live local ifaces that a focused scan would skip (e.g. late VPN /
+ * utun while recent peers are on Wi‑Fi). Empty when focus matches nothing
+ * (focused path already sweeps all locals) or every iface is in focus.
+ */
+export function unfocusedSubnetHosts(
+  focusIps: string[],
+  localIps: Array<string | LocalIpInfo> = localIpv4Addresses(),
+): string[] {
+  if (focusIps.length === 0) return []
+  const locals = normLocals(localIps)
+  const matching = locals.filter((li) =>
+    focusIps.some((f) => ipv4Parts(f) !== null && sameNetwork(f, li.address, li.maskBits)),
+  )
+  if (matching.length === 0 || matching.length >= locals.length) return []
+  const skipped = locals.filter(
+    (li) => !matching.some((m) => m.address === li.address && m.maskBits === li.maskBits),
+  )
+  return localSubnetHosts(skipped, [])
 }
 
 /**

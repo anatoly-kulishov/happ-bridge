@@ -3,6 +3,7 @@ import {
   ChevronRight,
   Check,
   Copy,
+  Download,
   Save,
   Gauge,
   Home,
@@ -11,9 +12,10 @@ import {
   Plug,
   ShieldAlert,
   Sparkles,
+  Wifi,
   Wrench,
 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { BridgeState, DiagnosticCheck, UpdateInfo } from '../../electron/types'
 import { DEFAULT_SETTINGS } from '../../electron/types'
 import { useBridgeActions } from '../hooks/useBridgeActions'
@@ -32,9 +34,9 @@ type Props = {
   onShowWizard: () => void
 }
 
-const PRESETS: { id: 'telegram' | 'cursor'; label: string; icon: React.ElementType; proto: string }[] = [
-  { id: 'telegram', label: 'Telegram', icon: Copy, proto: 'SOCKS5' },
-  { id: 'cursor', label: 'Cursor / IDE', icon: Copy, proto: 'HTTP' },
+const PRESETS: { id: 'telegram' | 'cursor'; label: string; proto: string }[] = [
+  { id: 'telegram', label: 'Telegram', proto: 'SOCKS5' },
+  { id: 'cursor', label: 'Cursor / IDE', proto: 'HTTP' },
 ]
 
 export function Settings({ state, onState, onShowWizard }: Props) {
@@ -65,17 +67,19 @@ export function Settings({ state, onState, onShowWizard }: Props) {
     installUpdate,
   } = useBridgeActions(onState)
 
+  const scrollToRef = (el: HTMLElement | null) => {
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'nearest' })
+  }
+
   const openPortsSettings = () => {
     setAdvanced(true)
-    window.requestAnimationFrame(() => {
-      advancedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    })
+    window.requestAnimationFrame(() => scrollToRef(advancedRef.current))
   }
 
   const openLanAuthSettings = () => {
-    window.requestAnimationFrame(() => {
-      securityRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    })
+    setShowLanPassword(true)
+    window.requestAnimationFrame(() => scrollToRef(securityRef.current))
   }
   const [saving, setSaving] = useState(false)
   const [selecting, setSelecting] = useState(false)
@@ -96,6 +100,22 @@ export function Settings({ state, onState, onShowWizard }: Props) {
     proxyUser.trim() !== (state.settings.proxyUser ?? '') ||
     proxyPassword.length > 0 ||
     clearPassword
+
+  const hasUnsaved = dirty && !saved
+
+  useEffect(() => {
+    window.__hbDirty = hasUnsaved
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!hasUnsaved) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload)
+      window.__hbDirty = false
+    }
+  }, [hasUnsaved])
 
   const selectPeer = async (ip: string) => {
     if (ip === state.phoneIp) return
@@ -143,7 +163,6 @@ export function Settings({ state, onState, onShowWizard }: Props) {
   const copyDiagnostics = async () => {
     setDiagHidden(false)
     await window.happBridge.copyDiagnostics()
-    // copyDiagnostics runs diagnose(); pull fresh state into UI.
     onState(await window.happBridge.getState())
     setDiagCopied(true)
     window.setTimeout(() => setDiagCopied(false), 1500)
@@ -176,35 +195,56 @@ export function Settings({ state, onState, onShowWizard }: Props) {
     }
   }
 
+  const headerDotClass =
+    state.status === 'connected'
+      ? 'bg-emerald-400'
+      : state.status === 'unstable'
+        ? 'bg-amber-400'
+        : state.settings.enabled
+          ? 'bg-amber-400'
+          : 'bg-zinc-500 status-dot-idle'
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 pt-5 pb-4">
-        <header className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-white">Happ Bridge</h1>
-            <p className="text-xs text-zinc-500">Мост к Happ SOCKS5/HTTP</p>
+    <div className="app-shell">
+      <main className="app-scroll">
+        <header className="flex items-start justify-between gap-3 pb-1">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-semibold tracking-tight text-[var(--hb-text)]">
+                Happ Bridge
+              </h1>
+              <span
+                className={`status-dot ${headerDotClass}`}
+                title={
+                  state.status === 'connected'
+                    ? 'Подключено'
+                    : state.status === 'unstable'
+                      ? 'Связь нестабильна'
+                      : state.settings.enabled
+                        ? 'Ищем телефон или нет связи'
+                        : 'Мост выключен'
+                }
+                aria-hidden
+              />
+            </div>
+            <p className="mt-0.5 text-xs muted">Локальный мост к Happ на телефоне</p>
           </div>
-          <div
-            className={`h-2.5 w-2.5 rounded-full ${
-              state.status === 'connected'
-                ? 'bg-emerald-400'
-                : state.settings.enabled
-                  ? 'bg-amber-400'
-                  : 'bg-zinc-500'
-            }`}
-            title={
-              state.status === 'connected'
-                ? 'Подключено'
-                : state.status === 'unstable'
-                  ? 'Связь нестабильна'
-                  : state.settings.enabled
-                    ? 'Поиск'
-                    : 'Выключено'
-            }
-          />
+          {state.wifiSsid && (
+            <span
+              className={`chip max-w-[9.5rem] ${state.isHomeNetwork ? 'chip-ok' : ''}`}
+              title={
+                state.isHomeNetwork
+                  ? `Wi‑Fi «${state.wifiSsid}» · домашняя сеть`
+                  : `Wi‑Fi «${state.wifiSsid}» · можно отметить как домашнюю`
+              }
+            >
+              <Wifi size={11} aria-hidden />
+              <span className="truncate">{state.wifiSsid}</span>
+            </span>
+          )}
         </header>
 
-        <Card title="Соединение">
+        <Card elevated>
           <StatusBadge
             status={state.status}
             phoneIp={state.phoneIp}
@@ -214,20 +254,19 @@ export function Settings({ state, onState, onShowWizard }: Props) {
             scan={state.scan}
           />
 
-          <div className="mt-3">
+          <div className="mt-3 border-t border-[var(--hb-border)] pt-2.5">
             <Switch
               checked={state.settings.enabled}
               onChange={(checked) => void toggleBridge(checked)}
               label="Мост к Happ"
+              hint={
+                state.settings.enabled
+                  ? 'Автопоиск и переподключение включены'
+                  : 'Включите — поиск телефона запустится сам'
+              }
               disabled={toggling}
             />
           </div>
-
-          {!state.settings.enabled && (
-            <p className="mt-3 text-xs leading-relaxed text-zinc-500">
-              Включите мост — поиск телефона запустится сам. Список и обновление — в блоке ниже.
-            </p>
-          )}
         </Card>
 
         {state.publicWifiNoAuth && (
@@ -240,7 +279,8 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                 <button
                   type="button"
                   disabled={markingHome}
-                  className="flex h-8 items-center gap-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 text-xs font-medium text-amber-50 transition-colors hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+                  className="btn-secondary h-8 px-2.5 text-xs"
+                  title={`Отметить «${state.wifiSsid}» как домашнюю — без предупреждения о публичном Wi‑Fi`}
                   onClick={() => void markHome()}
                 >
                   <BusyIcon busy={markingHome} icon={Home} size={14} />
@@ -265,17 +305,19 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                 {bridgeError.kind === 'port-in-use' && (
                   <button
                     type="button"
-                    className="flex h-8 items-center gap-1 rounded-lg border border-red-400/30 bg-red-500/10 px-2.5 text-xs font-medium text-red-50 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                    className="btn-secondary h-8 px-2.5 text-xs"
+                    title="Открыть расширенные настройки и сменить порты SOCKS5 / HTTP"
                     onClick={openPortsSettings}
                   >
-                    <Wrench size={14} />
+                    <Wrench size={14} aria-hidden />
                     Сменить порты
                   </button>
                 )}
                 {bridgeError.kind === 'auth' && (
                   <button
                     type="button"
-                    className="flex h-8 items-center gap-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 text-xs font-medium text-amber-50 transition-colors hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                    className="btn-secondary h-8 px-2.5 text-xs"
+                    title="Указать логин и пароль Happ LAN"
                     onClick={openLanAuthSettings}
                   >
                     Указать пароль
@@ -284,18 +326,22 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                 {bridgeError.kind === 'validation' && (
                   <button
                     type="button"
-                    className="flex h-8 items-center gap-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 text-xs font-medium text-amber-50 transition-colors hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                    className="btn-secondary h-8 px-2.5 text-xs"
+                    title="Открыть расширенные настройки"
                     onClick={openPortsSettings}
                   >
-                    <Wrench size={14} />
+                    <Wrench size={14} aria-hidden />
                     Открыть настройки
                   </button>
                 )}
-                {(bridgeError.kind === 'port-in-use' || bridgeError.kind === 'generic') && (
+                {(bridgeError.kind === 'port-in-use' ||
+                  bridgeError.kind === 'generic' ||
+                  bridgeError.kind === 'guidance') && (
                   <button
                     type="button"
                     disabled={busy || toggling}
-                    className="flex h-8 items-center gap-1 rounded-lg border border-red-400/30 bg-red-500/10 px-2.5 text-xs font-medium text-red-50 transition-colors hover:bg-red-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+                    className="btn-secondary h-8 px-2.5 text-xs"
+                    title="Снова поискать телефон в сети"
                     onClick={() => void findPhone()}
                   >
                     <BusyIcon busy={busy} icon={RefreshCw} size={14} />
@@ -309,48 +355,46 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           </AlertBanner>
         )}
 
-        {(state.settings.enabled || state.peers.length > 0) && (
-          <Card
-            title="Телефоны в сети"
-            action={
-              <button
-                type="button"
-                disabled={!state.settings.enabled || scanning || busy || selecting || toggling}
-                onClick={() => {
-                  setDiagHidden(false)
-                  rescanPhones()
-                }}
-                title={connected ? 'Обновить список без разрыва' : 'Новый поиск'}
-                aria-label={connected ? 'Обновить список' : 'Новый поиск'}
-                className="flex size-7 items-center justify-center rounded-md border border-zinc-700 text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-40"
-              >
-                <BusyIcon busy={busy || scanning} icon={RefreshCw} size={14} />
-              </button>
+        <Card
+          title="Телефоны"
+          action={
+            <button
+              type="button"
+              disabled={!state.settings.enabled || scanning || busy || selecting || toggling}
+              onClick={() => {
+                setDiagHidden(false)
+                rescanPhones()
+              }}
+              title={connected ? 'Обновить список без разрыва' : 'Новый поиск'}
+              aria-label={connected ? 'Обновить список' : 'Новый поиск'}
+              className="icon-btn"
+            >
+              <BusyIcon busy={busy || scanning} icon={RefreshCw} size={14} />
+            </button>
+          }
+        >
+          <PeerList
+            peers={state.peers}
+            selectedIp={state.phoneIp}
+            busy={busy || selecting}
+            familiarIps={familiarIps(state)}
+            onSelect={selectPeer}
+            onDisconnect={disconnectPeer}
+            showHeader={false}
+            emptyHint={
+              busy || scanning
+                ? 'Ищем телефоны в сети…'
+                : state.paused
+                  ? 'Отключено. Выберите телефон или нажмите обновление.'
+                  : 'Пока пусто. Нажмите ↻ для поиска.'
             }
-          >
-            <PeerList
-              peers={state.peers}
-              selectedIp={state.phoneIp}
-              busy={busy || selecting}
-              familiarIps={familiarIps(state)}
-              onSelect={selectPeer}
-              onDisconnect={disconnectPeer}
-              showHeader={false}
-              emptyHint={
-                busy || scanning
-                  ? 'Ищем телефоны в сети…'
-                  : state.paused
-                    ? 'Отключено. Выберите телефон в списке или нажмите обновление.'
-                    : 'Пока пусто. Нажмите ↻ для поиска.'
-              }
-            />
-            {state.peers.length > 1 && state.status === 'disconnected' && (
-              <p className="mt-2 text-xs leading-relaxed text-zinc-500">
-                Несколько телефонов — нажмите нужный IP. Активный повторно — отключить.
-              </p>
-            )}
-          </Card>
-        )}
+          />
+          {state.peers.length > 1 && state.status === 'disconnected' && (
+            <p className="mt-2 text-xs leading-relaxed muted">
+              Несколько телефонов — нажмите нужный IP. Активный повторно — отключить.
+            </p>
+          )}
+        </Card>
 
         <Card title="Адреса прокси">
           <div className="space-y-2">
@@ -372,9 +416,10 @@ export function Settings({ state, onState, onShowWizard }: Props) {
 
           <button
             type="button"
-            className="mt-2 flex items-center gap-1 text-left text-xs text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+            className="mt-2.5 flex items-center gap-1 text-left text-xs muted transition-colors hover:text-[var(--hb-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hb-ring)]"
             onClick={() => setShowPresets((v) => !v)}
             aria-expanded={showPresets}
+            title={showPresets ? 'Скрыть шпаргалки' : 'Показать шпаргалки для приложений'}
           >
             {showPresets ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             Шпаргалки для приложений
@@ -388,12 +433,19 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                   type="button"
                   disabled={!bridgeActive}
                   onClick={() => void copy(preset.id)}
-                  className="flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900/60 px-2.5 py-1.5 text-xs text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+                  title={
+                    bridgeActive
+                      ? copied === preset.id
+                        ? 'Скопировано'
+                        : `Копировать настройки ${preset.label} (${preset.proto})`
+                      : 'Сначала подключите мост'
+                  }
+                  className="chip transition-colors hover:border-[var(--hb-border-strong)] hover:text-[var(--hb-text)] disabled:opacity-45"
                 >
                   {copied === preset.id ? (
-                    <Check size={13} className="text-emerald-400" />
+                    <Check size={12} className="text-emerald-400" />
                   ) : (
-                    <Copy size={13} />
+                    <Copy size={12} />
                   )}
                   {preset.label} · {preset.proto}
                 </button>
@@ -409,16 +461,16 @@ export function Settings({ state, onState, onShowWizard }: Props) {
         <Card
           title="Диагностика"
           action={
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 disabled={diagnosing || busy}
                 onClick={() => void copyDiagnostics()}
-                className="flex h-7 items-center gap-1 rounded-md border border-zinc-700 px-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
-                title="Снимок + хвост лога для разбора сбоев"
+                className="icon-btn"
+                title={diagCopied ? 'Скопировано' : 'Скопировать отчёт'}
+                aria-label={diagCopied ? 'Скопировано' : 'Скопировать отчёт'}
               >
-                {diagCopied ? <Check size={13} /> : <Copy size={13} />}
-                {diagCopied ? 'Скопировано' : 'Отчёт'}
+                {diagCopied ? <Check size={14} /> : <Copy size={14} />}
               </button>
               <button
                 type="button"
@@ -427,21 +479,23 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                   setDiagHidden(false)
                   void diagnose()
                 }}
-                className="flex h-7 items-center gap-1 rounded-md border border-zinc-700 px-2 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+                className="icon-btn"
+                title={diagnosing ? 'Проверяю…' : 'Запустить диагностику'}
+                aria-label={diagnosing ? 'Проверяю…' : 'Запустить диагностику'}
               >
-                <BusyIcon busy={diagnosing} icon={Gauge} size={13} />
-                {diagnosing ? 'Проверяю…' : 'Запустить'}
+                <BusyIcon busy={diagnosing} icon={Gauge} size={14} />
               </button>
             </div>
           }
         >
           {state.diagnostics && state.diagnostics.length > 0 && !diagHidden && (
             <>
-              <div className="mb-2 flex items-center justify-end gap-3">
+              <div className="mb-2 flex items-center justify-end">
                 <button
                   type="button"
                   onClick={() => setDiagHidden(true)}
-                  className="text-xs text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                  title="Скрыть результаты диагностики"
+                  className="text-xs muted transition-colors hover:text-[var(--hb-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hb-ring)]"
                 >
                   Скрыть
                 </button>
@@ -450,15 +504,14 @@ export function Settings({ state, onState, onShowWizard }: Props) {
             </>
           )}
           {(!state.diagnostics || state.diagnostics.length === 0 || diagHidden) && (
-            <p className="text-xs text-zinc-500">
-              «Запустить» - проверки сети. «Отчёт» - JSON со снимком, диагностикой и хвостом
-              лога (для разбора, когда телефон долго не находится).
+            <p className="text-xs leading-relaxed muted">
+              «Запустить» - проверки сети. «Отчёт» - JSON со снимком и хвостом лога.
             </p>
           )}
         </Card>
 
         <Card title="Безопасность и сеть">
-          <div ref={securityRef} className="space-y-3">
+          <div ref={securityRef} className="scroll-mt-3 space-y-3">
             <Switch
               checked={openAtLogin}
               onChange={(checked) => {
@@ -468,51 +521,74 @@ export function Settings({ state, onState, onShowWizard }: Props) {
               label="Запускать при входе в macOS"
             />
 
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/40">
+            <div className="surface overflow-hidden rounded-[10px]">
               <button
                 type="button"
-                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left transition-colors hover:bg-zinc-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                className="flex w-full items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-[var(--hb-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hb-ring)]"
                 onClick={() => setShowLanPassword((v) => !v)}
                 aria-expanded={showLanPassword}
+                title={
+                  showLanPassword
+                    ? 'Свернуть пароль Happ LAN'
+                    : 'Логин и пароль из Happ для LAN'
+                }
               >
-                <span className="flex items-center gap-1.5 text-sm text-zinc-300">
-                  <ShieldAlert size={14} />
+                <span className="flex items-center gap-1.5 text-sm text-[var(--hb-text)]">
+                  <ShieldAlert size={14} className="muted" aria-hidden />
                   Пароль Happ (LAN)
                 </span>
                 <span className="flex items-center gap-2">
                   {state.lanPasswordSet && (
-                    <span className="text-xs text-emerald-400/70">задан</span>
+                    <span
+                      className="inline-flex size-5 items-center justify-center rounded-full bg-[var(--hb-ok-soft)] text-emerald-300"
+                      title="Пароль сохранён в Keychain"
+                      aria-label="Пароль задан"
+                    >
+                      <Check size={12} aria-hidden />
+                    </span>
                   )}
                   {showLanPassword ? (
-                    <ChevronDown size={14} className="text-zinc-500" />
+                    <ChevronDown size={14} className="faint" aria-hidden />
                   ) : (
-                    <ChevronRight size={14} className="text-zinc-500" />
+                    <ChevronRight size={14} className="faint" aria-hidden />
                   )}
                 </span>
               </button>
 
               {showLanPassword && (
-                <div className="space-y-2 border-t border-zinc-800 px-3 pb-3 pt-2">
-                  <p className="text-xs leading-relaxed text-zinc-500">
+                <div className="space-y-2 border-t border-[var(--hb-border)] px-3 pb-3 pt-2.5">
+                  <p className="text-xs leading-relaxed muted">
                     Те же данные, что в Happ. Пароль хранится только в Keychain macOS.
                   </p>
                   <div className="grid grid-cols-2 gap-2">
-                    <Field label="Логин" value={proxyUser} onChange={setProxyUser} placeholder="user" />
+                    <Field
+                      label="Логин"
+                      name="proxyUser"
+                      value={proxyUser}
+                      onChange={setProxyUser}
+                      placeholder="user…"
+                    />
                     <Field
                       label="Пароль"
+                      name="proxyPassword"
                       value={proxyPassword}
                       onChange={(v) => {
                         setProxyPassword(v)
                         setClearPassword(false)
                       }}
-                      placeholder={state.lanPasswordSet ? 'в Keychain' : '••••'}
+                      placeholder={state.lanPasswordSet ? 'в Keychain…' : '••••'}
                       type="password"
                     />
                   </div>
                   {state.lanPasswordSet && (
                     <button
                       type="button"
-                      className="text-xs text-zinc-500 transition-colors hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                      className="text-xs muted transition-colors hover:text-[var(--hb-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hb-ring)]"
+                      title={
+                        clearPassword
+                          ? 'Отмечено к удалению — нажмите «Сохранить»'
+                          : 'Удалить пароль LAN из Keychain macOS'
+                      }
                       onClick={() => {
                         setProxyPassword('')
                         setClearPassword(true)
@@ -528,20 +604,24 @@ export function Settings({ state, onState, onShowWizard }: Props) {
             </div>
 
             {state.wifiSsid && (
-              <div className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2">
-                <span className="text-xs text-zinc-500">
-                  Wi‑Fi: <span className="text-zinc-300">{state.wifiSsid}</span>
+              <div className="flex items-center justify-between gap-2 rounded-[10px] border border-[var(--hb-border)] bg-black/15 px-3 py-2.5">
+                <span className="text-xs muted">
+                  Wi‑Fi: <span className="text-[var(--hb-text)]">{state.wifiSsid}</span>
                 </span>
                 {state.isHomeNetwork ? (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
-                    <Home size={12} />
-                    домашняя
+                  <span
+                    className="inline-flex size-6 items-center justify-center rounded-full bg-[var(--hb-ok-soft)] text-emerald-300"
+                    title="Домашняя сеть: без предупреждения о публичном Wi‑Fi"
+                    aria-label="Домашняя сеть"
+                  >
+                    <Home size={13} aria-hidden />
                   </span>
                 ) : (
                   <button
                     type="button"
                     disabled={markingHome}
-                    className="inline-flex items-center gap-1 text-xs text-sky-400 transition-colors hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 text-xs text-sky-300 transition-colors hover:text-sky-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hb-ring)] disabled:opacity-50"
+                    title="Считать текущий Wi‑Fi домашним"
                     onClick={() => void markHome()}
                   >
                     <BusyIcon busy={markingHome} icon={Home} size={12} />
@@ -551,36 +631,58 @@ export function Settings({ state, onState, onShowWizard }: Props) {
               </div>
             )}
 
-            <div ref={advancedRef}>
+            <div ref={advancedRef} className="scroll-mt-3">
               <button
                 type="button"
-                className="flex w-full items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-left transition-colors hover:border-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60"
+                className="flex w-full items-center justify-between rounded-[10px] border border-[var(--hb-border)] bg-black/15 px-3 py-2.5 text-left transition-colors hover:bg-[var(--hb-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hb-ring)]"
                 onClick={() => setAdvanced((v) => !v)}
                 aria-expanded={advanced}
+                title={
+                  advanced
+                    ? 'Свернуть расширенные настройки'
+                    : 'IP вручную и порты SOCKS5 / HTTP'
+                }
               >
-                <span className="flex items-center gap-1.5 text-sm text-zinc-300">
-                  <Wrench size={14} />
+                <span className="flex items-center gap-1.5 text-sm text-[var(--hb-text)]">
+                  <Wrench size={14} className="muted" aria-hidden />
                   Расширенные настройки
                 </span>
-                {advanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {advanced ? (
+                  <ChevronDown size={14} className="faint" aria-hidden />
+                ) : (
+                  <ChevronRight size={14} className="faint" aria-hidden />
+                )}
               </button>
 
               {advanced && (
-                <div className="mt-2 space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                <div className="mt-2 space-y-3 rounded-[10px] border border-[var(--hb-border)] bg-black/15 p-3">
                   <Field
                     label="IP телефона вручную"
+                    name="manualIp"
                     hint="Если автопоиск не справляется"
                     value={manualIp}
                     onChange={setManualIp}
                     placeholder="192.168.1.6"
+                    inputMode="decimal"
                   />
                   <div className="grid grid-cols-2 gap-2">
-                    <Field label="Порт SOCKS5" value={socksPort} onChange={setSocksPort} />
-                    <Field label="Порт HTTP" value={httpPort} onChange={setHttpPort} />
+                    <Field
+                      label="Порт SOCKS5"
+                      name="socksPort"
+                      value={socksPort}
+                      onChange={setSocksPort}
+                      inputMode="numeric"
+                    />
+                    <Field
+                      label="Порт HTTP"
+                      name="httpPort"
+                      value={httpPort}
+                      onChange={setHttpPort}
+                      inputMode="numeric"
+                    />
                   </div>
-                  <p className="text-xs leading-relaxed text-zinc-600">
-                    После смены портов обновите адрес в приложениях (Telegram, Cursor, Firefox…) и
-                    нажмите «Сохранить».
+                  <p className="text-xs leading-relaxed muted">
+                    После смены портов обновите адрес в приложениях и нажмите «Сохранить».
                   </p>
                 </div>
               )}
@@ -594,22 +696,32 @@ export function Settings({ state, onState, onShowWizard }: Props) {
             />
           </div>
         </Card>
-      </div>
+      </main>
 
-      <footer className="flex shrink-0 items-center border-t border-zinc-800/80 bg-[var(--hb-bg)] px-5 pb-5 pt-3">
-        <button type="button" className="btn-ghost flex items-center gap-1.5" onClick={onShowWizard}>
-          <Plug size={16} />
+      <footer className="app-footer">
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={onShowWizard}
+          title="Открыть мастер настройки"
+        >
+          <Plug size={16} aria-hidden />
           Мастер
         </button>
-        {dirty && !saved && (
-          <span className="ml-2 inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-300" title="Несохранённые изменения" />
+        {hasUnsaved && (
+          <span
+            className="inline-block size-2 shrink-0 animate-pulse rounded-full bg-amber-300"
+            title="Есть несохранённые изменения"
+            aria-label="Есть несохранённые изменения"
+          />
         )}
         <div className="flex-1" />
         <button
           type="button"
           disabled={saving}
           onClick={() => void save()}
-          className="btn-primary flex min-w-[7.5rem] items-center justify-center gap-1.5"
+          className="btn-primary min-w-[7.5rem]"
+          title={saved ? 'Сохранено' : saving ? 'Сохраняю…' : 'Сохранить настройки'}
         >
           {saving ? (
             <Loader2 size={16} className="animate-spin" aria-hidden />
@@ -637,24 +749,26 @@ function UpdateRow({
   const downloading = update.status === 'downloading'
   const busy = checking || update.status === 'checking' || downloading
   const percent = downloading ? Math.max(0, Math.min(100, update.progress ?? 0)) : null
-  const ready = update.status === 'available' && (update.progress === 100 || /скачана/i.test(update.message))
+  const ready =
+    update.status === 'available' &&
+    (update.progress === 100 || /скачана/i.test(update.message))
   const errored = update.status === 'error'
 
   return (
     <div
-      className={`space-y-2 rounded-lg border px-3 py-2 ${
+      className={`space-y-2 rounded-[10px] border px-3 py-2.5 ${
         errored
-          ? 'border-red-500/30 bg-red-500/10'
+          ? 'border-red-400/25 bg-[var(--hb-danger-soft)]'
           : ready
-            ? 'border-emerald-500/30 bg-emerald-500/10'
-            : 'border-zinc-800 bg-zinc-950/40'
+            ? 'border-emerald-400/25 bg-[var(--hb-ok-soft)]'
+            : 'border-[var(--hb-border)] bg-black/15'
       }`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p
             className={`text-xs leading-relaxed ${
-              errored ? 'text-red-200' : ready ? 'text-emerald-200' : 'text-zinc-400'
+              errored ? 'text-red-200' : ready ? 'text-emerald-200' : 'muted'
             }`}
           >
             {update.message}
@@ -669,33 +783,36 @@ function UpdateRow({
               aria-label="Скачивание обновления"
             >
               <Loader2 size={12} className="shrink-0 animate-spin text-sky-400" aria-hidden />
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/35">
                 <div
-                  className="h-full rounded-full bg-sky-500 transition-[width] duration-200"
+                  className="h-full rounded-full bg-sky-400 transition-[width] duration-200"
                   style={{ width: `${percent}%` }}
                 />
               </div>
-              <span className="shrink-0 text-[11px] tabular-nums text-zinc-500">{percent}%</span>
+              <span className="shrink-0 text-[11px] tabular-nums muted">{percent}%</span>
             </div>
           )}
         </div>
         {ready ? (
           <button
             type="button"
-            className="flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-400 transition-colors hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60"
+            className="icon-btn border-emerald-400/30 text-emerald-300 hover:text-emerald-200"
+            title="Установить обновление"
+            aria-label="Установить обновление"
             onClick={onInstall}
           >
-            Установить
+            <Download size={14} aria-hidden />
           </button>
         ) : (
           <button
             type="button"
             disabled={busy}
-            className="flex shrink-0 items-center gap-1 text-xs text-sky-400 transition-colors hover:text-sky-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 disabled:opacity-50"
+            className="icon-btn"
+            title={downloading ? 'Скачиваем…' : busy ? 'Проверяю…' : 'Проверить обновления'}
+            aria-label={downloading ? 'Скачиваем…' : busy ? 'Проверяю…' : 'Проверить обновления'}
             onClick={onCheck}
           >
-            <BusyIcon busy={busy && !downloading} icon={Sparkles} size={12} />
-            {downloading ? 'Скачиваем' : busy ? 'Проверяю…' : 'Проверить'}
+            <BusyIcon busy={busy && !downloading} icon={Sparkles} size={14} />
           </button>
         )}
       </div>
@@ -719,17 +836,21 @@ function DiagnosticsList({ items }: { items: DiagnosticCheck[] }) {
     status === 'ok' ? 'text-emerald-300' : status === 'warn' ? 'text-amber-300' : 'text-red-300'
   const dotColor = (status: DiagnosticCheck['status']) =>
     status === 'ok' ? 'bg-emerald-400' : status === 'warn' ? 'bg-amber-400' : 'bg-red-400'
+  const statusTitle = (status: DiagnosticCheck['status']) =>
+    status === 'ok' ? 'OK' : status === 'warn' ? 'Внимание' : 'Ошибка'
   return (
-    <ul className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+    <ul className="space-y-2.5 rounded-[10px] border border-[var(--hb-border)] bg-black/20 p-3">
       {items.map((item) => (
-        <li key={item.id} className="text-sm">
+        <li key={item.id} className="text-sm" title={`${item.label}: ${item.detail}`}>
           <p className={`flex items-center gap-2 font-medium ${statusColor(item.status)}`}>
-            <span className={`inline-block size-1.5 shrink-0 rounded-full ${dotColor(item.status)}`} aria-hidden />
+            <span
+              className={`inline-block size-1.5 shrink-0 rounded-full ${dotColor(item.status)}`}
+              title={statusTitle(item.status)}
+              aria-label={statusTitle(item.status)}
+            />
             {item.label}
           </p>
-          <p className="mt-0.5 pl-3.5 text-xs leading-relaxed text-zinc-500">
-            {item.detail}
-          </p>
+          <p className="mt-0.5 pl-3.5 text-xs leading-relaxed muted">{item.detail}</p>
         </li>
       ))}
     </ul>
@@ -744,30 +865,37 @@ function parsePort(raw: string, fallback: number): number {
 
 function Field({
   label,
+  name,
   hint,
   value,
   onChange,
   placeholder,
   type = 'text',
+  inputMode,
 }: {
   label: string
+  name?: string
   hint?: string
   value: string
   onChange: (v: string) => void
   placeholder?: string
   type?: 'text' | 'password'
+  inputMode?: 'text' | 'numeric' | 'decimal'
 }) {
   return (
     <label className="block text-sm">
-      <span className="text-zinc-400">{label}</span>
-      {hint && <span className="mt-0.5 block text-xs text-zinc-600">{hint}</span>}
+      <span className="text-[var(--hb-text)]">{label}</span>
+      {hint && <span className="mt-0.5 block text-xs muted">{hint}</span>}
       <input
         type={type}
+        name={name}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         autoComplete="off"
-        className="mt-1 w-full rounded-md border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 font-mono text-sm text-white outline-none transition-colors duration-150 focus-visible:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400/50"
+        spellCheck={false}
+        inputMode={inputMode}
+        className="field-input"
       />
     </label>
   )

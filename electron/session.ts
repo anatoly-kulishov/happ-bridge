@@ -12,6 +12,7 @@ import {
   LOST_AFTER_MS,
   shouldDeclareLost,
   waitForLocalIpv4,
+  waitForPhoneRoute,
 } from './discover'
 import { ProxyRelay, checkProxyAuth, probeSocks5 } from './relay'
 import { loadSettings, saveSettings } from './store'
@@ -63,6 +64,8 @@ const TRAFFIC_FRESH_MS = 15_000
 const COLD_PROBE_MS = 5000
 const STARTUP_NET_WAIT_MS = 25_000
 const RESUME_NET_WAIT_MS = 10_000
+/** Extra wait on startup when remembered peers are off the live subnet (late VPN). */
+const STARTUP_ROUTE_WAIT_MS = 45_000
 /** After LOST, poll last/recent IPs this often while full scan runs. */
 const FAST_RECOVERY_POLL_MS = 2_000
 const FAST_RECOVERY_WINDOW_MS = 60_000
@@ -110,7 +113,7 @@ export class BridgeSession {
   private firstProbeFailAt: number | null = null
   private idleDelayMs = BASE_WATCH_MS
   private idleFailStreak = 0
-  private lastNetFp = networkFingerprint(undefined, null)
+  private lastNetFp = networkFingerprint()
   private announcedFirstConnect = false
   private lastLostNotifyAt = 0
   /** After Disconnect: skip auto reconnect until user Find / select. */
@@ -181,11 +184,10 @@ export class BridgeSession {
     lastTrafficAgeMs: number | null
   } {
     const localIps = localIpv4Addresses()
-    const focus = this.phoneIp ?? this.lastKnownPhoneIp
     const trafficAt = this.relay.lastTrafficMs
     return {
       localIps,
-      netFingerprint: networkFingerprint(localIps, focus),
+      netFingerprint: networkFingerprint(localIps),
       lastKnownPhoneIp: this.lastKnownPhoneIp,
       firstProbeFailAt: this.firstProbeFailAt,
       probeSilentMs:
@@ -261,6 +263,7 @@ export class BridgeSession {
       reason, this.settings.enabled, this.holdOff, this.phoneIp, this.status)
 
     if (this.connectInFlight) {
+      log('connect', 'reason=%s coalesced: aborting in-flight connect before restart', reason)
       this.discoverAbort?.abort()
       await this.connectInFlight.catch(() => false)
     }
@@ -489,7 +492,7 @@ export class BridgeSession {
 
   onNetworkMaybeChanged(): void {
     if (!this.settings.enabled || this.holdOff) return
-    const fp = networkFingerprint(undefined, this.phoneIp ?? this.lastKnownPhoneIp)
+    const fp = networkFingerprint()
     if (fp === this.lastNetFp) return
     log('netPoll', 'network changed fp %s → %s', this.lastNetFp, fp)
     this.lastNetFp = fp
@@ -526,7 +529,7 @@ export class BridgeSession {
     if (this.watchRunning) return
     this.watchRunning = true
     this.watchAbort = new AbortController()
-    this.lastNetFp = networkFingerprint(undefined, this.phoneIp ?? this.lastKnownPhoneIp)
+    this.lastNetFp = networkFingerprint()
     this.idleFailStreak = 0
     log('watch', 'startWatch fp=%s (poll 3s)', this.lastNetFp)
     this.netPoll = setInterval(() => this.onNetworkMaybeChanged(), 3000)
@@ -554,9 +557,17 @@ export class BridgeSession {
     this.setStatus('searching')
 
     if (reason === 'startup') {
-      log('runConnect', 'reason=startup waiting for local IPv4…')
-      await waitForLocalIpv4({
-        timeoutMs: STARTUP_NET_WAIT_MS,
+      await this.refreshWifi()
+      const startupPreferred = [
+        ...preferredIpsFromSettings(this.settings, this.wifiSsid),
+        ...(this.settings.manualIp ? [this.settings.manualIp] : []),
+        ...(this.lastKnownPhoneIp ? [this.lastKnownPhoneIp] : []),
+      ]
+      log('runConnect', 'reason=startup waiting for IPv4 / phone route… preferred=%o', startupPreferred)
+      await waitForPhoneRoute({
+        preferredIps: startupPreferred,
+        ipv4TimeoutMs: STARTUP_NET_WAIT_MS,
+        routeTimeoutMs: STARTUP_ROUTE_WAIT_MS,
         pollMs: 500,
         signal: this.discoverAbort.signal,
       })
@@ -622,6 +633,14 @@ export class BridgeSession {
           this.errorMessage =
             'Телефон в сети, но Happ не отвечает — вероятно, экран телефона заблокирован или Happ в фоне. Разблокируйте экран и откройте Happ.'
           this.hooks.onChange()
+        } else if (
+          preferredIps.length > 0 &&
+          livePreferredIps(preferredIps).length === 0 &&
+          localIpv4Addresses().length > 0
+        ) {
+          this.errorMessage =
+            'Телефон, похоже, в другой сети (VPN?). Дождитесь подключения VPN или нажмите «Найти» после входа — и проверьте, что Happ слушает порт на телефоне.'
+          this.hooks.onChange()
         } else if (reason === 'user' || reason === 'watchdog-lost' || reason === 'network-change') {
           this.notifyFail(reason)
         }
@@ -680,6 +699,7 @@ export class BridgeSession {
         this.hooks.onChange()
         return false
       }
+      log('runConnect', 'chosen=%s (found=%o, untrusted=%s)', chosen, found, untrustedNoAuth)
 
       // The chosen peer may have only just accepted TCP (phone waking); retry the
       // auth handshake a few times so a half-asleep Happ still connects this cycle.
@@ -904,7 +924,10 @@ export class BridgeSession {
   private clearProbeGrace(): void {
     const wasUnstable = this.status === 'unstable'
     this.firstProbeFailAt = null
-    if (wasUnstable) this.setStatus('connected')
+    if (wasUnstable) {
+      log('healthCheck', 'phone %s RECOVERED → connected', this.phoneIp)
+      this.setStatus('connected')
+    }
   }
 
   /** Soft cap when LAN is up (phone/TCC) so post-reboot retries stay responsive. */

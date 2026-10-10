@@ -1,4 +1,4 @@
-import { Loader2 } from 'lucide-react'
+import { Loader2, ShieldCheck } from 'lucide-react'
 import type { BridgeStatus } from '../../electron/types'
 import { statusPresentation } from '../../electron/types'
 
@@ -9,6 +9,7 @@ export function StatusBadge({
   enabled = true,
   paused = false,
   scan,
+  compact = false,
 }: {
   status: BridgeStatus
   phoneIp: string | null
@@ -16,50 +17,74 @@ export function StatusBadge({
   enabled?: boolean
   paused?: boolean
   scan?: { done: number; total: number; currentIp?: string } | null
+  /** Smaller inline variant for wizard / dense layouts. */
+  compact?: boolean
 }) {
   const item =
     !enabled || paused
       ? {
           label: !enabled ? 'Мост выключен' : 'Отключено вами',
-          badgeClass: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30',
-          dotClass: 'bg-zinc-400',
+          badgeClass: 'border-[var(--hb-border)] bg-[var(--hb-bg-soft)] text-[var(--hb-text-muted)]',
+          dotClass: 'bg-zinc-400 status-dot-idle',
+          tone: 'grey' as const,
         }
       : statusPresentation(status, phoneIp)
 
+  const percent =
+    scan && enabled && !paused && status === 'searching' && scan.total > 0
+      ? Math.min(100, Math.round((scan.done / scan.total) * 100))
+      : null
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <div
-          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors duration-150 ${item.badgeClass}`}
+          className={`inline-flex items-center gap-2.5 border ${item.badgeClass} ${
+            compact ? 'rounded-[10px] px-2.5 py-1.5 text-sm' : 'rounded-xl px-3.5 py-2.5 text-[15px] font-medium'
+          }`}
           role="status"
           aria-live="polite"
+          title={item.label}
         >
-          <span className={`h-2 w-2 shrink-0 rounded-full ${item.dotClass}`} aria-hidden />
-          {item.label}
+          <span
+            className={`status-dot ${item.dotClass}`}
+            title={item.label}
+            aria-hidden
+          />
+          <span className="tracking-tight">{item.label}</span>
         </div>
         {lanAuthOn && enabled && !paused && (
-          <span className="inline-flex items-center rounded-lg border border-sky-500/35 bg-sky-500/15 px-2.5 py-1.5 text-xs font-medium text-sky-200">
-            LAN auth
+          <span
+            className="inline-flex size-7 items-center justify-center rounded-full border border-sky-400/30 bg-[var(--hb-accent-soft)] text-sky-200"
+            title="Пароль Happ LAN задан — подключения без логина отсекаются"
+            aria-label="LAN auth включён"
+          >
+            <ShieldCheck size={14} aria-hidden />
           </span>
         )}
       </div>
-      {scan && enabled && !paused && status === 'searching' && scan.total > 0 && (
-        <div className="space-y-1" role="progressbar" aria-label="Поиск телефона">
+      {percent != null && (
+        <div
+          className="space-y-1.5"
+          role="progressbar"
+          aria-valuenow={percent}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Поиск телефона"
+        >
           <div className="flex items-center gap-2">
-            <Loader2 size={14} className="animate-spin text-sky-400" />
-            <div className="h-1 flex-1 overflow-hidden rounded-full bg-zinc-800">
+            <Loader2 size={14} className="animate-spin text-sky-400" aria-hidden />
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/35">
               <div
-                className="h-full rounded-full bg-sky-500 transition-[width] duration-200"
-                style={{ width: `${Math.min(100, Math.round((scan.done / scan.total) * 100))}%` }}
+                className="h-full rounded-full bg-sky-400 transition-[width] duration-200"
+                style={{ width: `${percent}%` }}
               />
             </div>
-            <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-              {scan.done}/{scan.total}
+            <span className="shrink-0 text-xs tabular-nums muted">
+              {scan!.done}/{scan!.total}
             </span>
           </div>
-          <p className="text-xs text-zinc-500">
-            Ищем {scan.currentIp ?? 'телефон'}…
-          </p>
+          <p className="text-xs muted">Ищем {scan!.currentIp ?? 'телефон'}…</p>
         </div>
       )}
     </div>

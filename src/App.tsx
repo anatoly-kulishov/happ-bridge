@@ -19,8 +19,8 @@ export default function App() {
 
   if (!state) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-zinc-400">
-        <Loader2 size={20} className="animate-spin text-sky-400" aria-hidden />
+      <div className="flex h-full flex-col items-center justify-center gap-2.5 text-sm muted">
+        <Loader2 size={22} className="animate-spin text-sky-400" aria-hidden />
         Загрузка…
       </div>
     )
@@ -37,6 +37,11 @@ export default function App() {
           setForceWizard(false)
           await refresh()
         }}
+        onDismiss={
+          state.settings.wizardDone || forceWizard
+            ? () => setForceWizard(false)
+            : undefined
+        }
         onState={setState}
       />
     )

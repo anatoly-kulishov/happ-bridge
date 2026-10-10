@@ -1,4 +1,5 @@
 import net from 'node:net'
+import { log } from './log'
 
 export type RelayPorts = {
   socksPort: number
@@ -75,6 +76,7 @@ export class ProxyRelay {
   /** Soft switch / soft-clear: keep listeners; drop live pipes when target changes. */
   setPhoneIp(phoneIp: string | null): void {
     if (phoneIp === this.phoneIp) return
+    log('relay', 'target %s → %s (keep listeners)', this.phoneIp ?? '(null)', phoneIp ?? '(null)')
     this.dropPipes()
     this.phoneIp = phoneIp
   }
@@ -104,6 +106,8 @@ export class ProxyRelay {
       this.bound?.httpPort === this.ports.httpPort
 
     if (this.isListening() && portsMatch) {
+      log('relay', 'start(target=%s): already listening on socks=%d http=%d — soft switch',
+        phoneIp, this.ports.socksPort, this.ports.httpPort)
       this.setPhoneIp(phoneIp)
       return
     }
@@ -121,13 +125,19 @@ export class ProxyRelay {
         waitListen(this.httpServer),
       ])
       this.bound = { ...this.ports }
+      log('relay', 'listening target=%s socks=127.0.0.1:%d http=127.0.0.1:%d',
+        phoneIp, this.ports.socksPort, this.ports.httpPort)
     } catch (err) {
+      log('relay', 'start FAILED target=%s err=%s', phoneIp, err instanceof Error ? err.message : String(err))
       await this.stop()
       throw err
     }
   }
 
   async stop(): Promise<void> {
+    if (this.socksServer || this.httpServer || this.phoneIp) {
+      log('relay', 'stop (was listening=%s target=%s)', this.isListening(), this.phoneIp)
+    }
     this.dropPipes()
     await Promise.all([closeServer(this.socksServer), closeServer(this.httpServer)])
     this.socksServer = null
@@ -152,18 +162,24 @@ export class ProxyRelay {
   private listen(localPort: number, remotePort: number): net.Server {
     const server = net.createServer((client) => {
       if (!this.phoneIp) {
+        log('relay', 'inbound :%d dropped — no target', localPort)
         client.destroy()
         return
       }
+      const target = this.phoneIp
 
-      const remote = net.connect({ host: this.phoneIp, port: remotePort }, () => {
+      const remote = net.connect({ host: target, port: remotePort }, () => {
         client.pipe(remote)
         remote.pipe(client)
+        log('relay', 'pipe :%d → %s:%d established (%d live)',
+          localPort, target, remotePort, this.pipes.size + 1)
       })
 
       // Fail fast when the phone is asleep / unreachable (macOS default can hang ~75s).
       remote.setTimeout(REMOTE_CONNECT_MS)
       remote.once('timeout', () => {
+        log('relay', 'pipe :%d → %s:%d TIMEOUT (phone not accepting)',
+          localPort, target, remotePort)
         remote.destroy()
         client.destroy()
       })
@@ -184,21 +200,28 @@ export class ProxyRelay {
 
       // Only remote bytes prove the phone is alive (client can write into a blackhole).
       const mark = () => {
+        if (this.lastTrafficAt === 0) {
+          log('relay', 'pipe :%d → %s first remote data (phone alive)', localPort, target)
+        }
         this.lastTrafficAt = Date.now()
       }
       remote.on('data', mark)
 
       let cleaned = false
-      const cleanup = () => {
+      const cleanup = (e?: Error) => {
         if (cleaned) return
         cleaned = true
+        if (e && !e.message.includes('ECONNRESET') && !e.message.includes('EPIPE')) {
+          const code = (e as NodeJS.ErrnoException).code
+          log('relay', 'pipe :%d → %s closed code=%s err=%s', localPort, target, code ?? '-', e.message)
+        }
         this.pipes.delete(pipe)
         client.destroy()
         remote.destroy()
       }
 
+      remote.on('error', (err) => cleanup(err))
       client.on('error', cleanup)
-      remote.on('error', cleanup)
       client.on('close', cleanup)
       remote.on('close', cleanup)
 
