@@ -1,12 +1,37 @@
 # Happ Bridge
 
-**macOS menu bar app** that keeps a stable local proxy for [Happ](https://happ.su) on your phone.
+### **Stable localhost proxy to Happ on your phone.**
 
-Set Telegram, Cursor, Firefox, and WebStorm to `127.0.0.1` once. When the phone IP changes on Wi‑Fi, Happ Bridge updates the tunnel automatically.
+[![Release](https://img.shields.io/github/v/release/anatoly-kulishov/happ-bridge?display_name=tag)](https://github.com/anatoly-kulishov/happ-bridge/releases)
+[![Platform](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-111111.svg)](#install)
+[![Electron](https://img.shields.io/badge/Electron-menu%20bar-47848F.svg)](https://www.electronjs.org/)
+[![Site](https://img.shields.io/badge/site-GitHub%20Pages-222.svg)](https://anatoly-kulishov.github.io/happ-bridge/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/anatoly-kulishov/happ-bridge/pulls)
 
-[Русский](#happ-bridge-рус) · [English](#happ-bridge-en) · [Download](#install) · [Site](https://anatoly-kulishov.github.io/happ-bridge/) · [Changelog](docs/CHANGELOG.md)
+[Русский](#happ-bridge-рус) · [English](#happ-bridge-en) · [Download](#install) · [Site](https://anatoly-kulishov.github.io/happ-bridge/) · [Changelog](docs/CHANGELOG.md) · [Security](docs/SECURITY.md)
 
-**Текущая версия:** 1.3.0
+**Current version:** 1.3.0
+
+---
+
+**macOS menu bar app** that keeps a stable local SOCKS5 / HTTP bridge to [Happ](https://happ.su) on your phone.
+
+Set Telegram, Cursor, Firefox, and WebStorm to `127.0.0.1` **once**. When the phone IP changes on Wi‑Fi, Happ Bridge updates the tunnel automatically.
+
+| Type | Stable address |
+| :--- | :------------- |
+| SOCKS5 | `127.0.0.1:10808` |
+| HTTP | `127.0.0.1:10809` |
+
+**Keywords:** Happ proxy, Happ LAN, SOCKS5 macOS, HTTP proxy iPhone, Telegram SOCKS5, Cursor proxy, WebStorm proxy, Firefox proxy, menu bar proxy, phone Wi‑Fi IP change, local TCP relay.
+
+```mermaid
+flowchart LR
+  Apps[Telegram / Cursor / IDE] --> Local["127.0.0.1:10808 / 10809"]
+  Local --> Bridge[Happ Bridge]
+  Bridge --> Phone[Happ on phone LAN]
+```
 
 ---
 
@@ -16,14 +41,9 @@ Set Telegram, Cursor, Firefox, and WebStorm to `127.0.0.1` once. When the phone 
 
 ### Зачем это нужно
 
-Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную сеть. IP телефона часто меняется - и в Telegram, Cursor, Firefox, WebStorm приходится править адрес вручную.
+Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную сеть. IP телефона часто меняется — и в Telegram, Cursor, Firefox, WebStorm приходится править адрес вручную.
 
-**Happ Bridge** находит телефон в Wi‑Fi и держит постоянные адреса на Mac:
-
-| Тип    | Адрес (не меняется)   |
-|--------|------------------------|
-| SOCKS5 | `127.0.0.1:10808`      |
-| HTTP   | `127.0.0.1:10809`      |
+**Happ Bridge** находит телефон в Wi‑Fi и держит постоянные адреса на Mac (таблица выше).
 
 ### Кому подойдёт
 
@@ -35,24 +55,17 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 - **автообновление, которое ставится**: после «Установить» ZIP подменяет `.app` (unsigned-сборка без ShipIt), снимает quarantine и перезапускает
 - **lean packaging**: `.app` ~197 MB, prune Framework locales, Preact + hand CSS, lazy Wizard/Inject/diagnostics
 - **тёмная тема на дизайн-токенах** (`--hb-*`): единая палитра, semantic UI, системные шрифты и `color-scheme: dark`
-- **контраст и анти-скачки**: читабельный мелкий текст, стабильная вёрстка при загрузке/поиске/прописке
-- **защита от потери данных**: при закрытии окна с несохранёнными настройками Happ Bridge спрашивает подтверждение
-- **развёрнутая диагностика подключения** в `main.log`: ошибки и таймауты к телефону, смена target, восстановление после «нестабильной» связи
-- автопоиск Happ в Wi‑Fi; если телефонов несколько - список и выбор вручную
-- устойчивый поиск после перезагрузки Mac (ожидание Wi‑Fi, мягкий backoff, подсказка Local Network в диагностике)
-- один тумблер **«Мост к Happ»** - включение/отключение без дублирующих кнопок
-- **реальные иконки** установленных Cursor / WebStorm / Firefox в списке прописки
-- прописка SOCKS видит установленные `.app`, даже если конфиг Application Support ещё не создан
+- **контраст и анти-скажки**: читабельный мелкий текст, стабильная вёрстка при загрузке/поиске/прописке
+- **защита от потери данных**: при закрытии окна с несохранёнными настройками — подтверждение
+- **диагностика подключения** в `main.log`: ошибки и таймауты к телефону, смена target, восстановление
+- автопоиск Happ в Wi‑Fi; несколько телефонов — список и ручной выбор
+- устойчивый поиск после перезагрузки Mac (ожидание Wi‑Fi, backoff, подсказка Local Network)
+- один тумблер **«Мост к Happ»**
+- **реальные иконки** Cursor / WebStorm / Firefox в списке прописки
 - локальный TCP-relay только на `127.0.0.1` (соседи по Wi‑Fi не видят прокси)
-- опциональный **логин/пароль Happ LAN** - проверка при поиске и прописка в приложения
-- пароль LAN в **Keychain**; домашние SSID и peer на сеть; предупреждение в чужой Wi‑Fi без пароля
-- soft-reconnect: смена IP телефона без обрыва слушателей
-- устойчивость: 3 неудачных probe, пропуск probe при живом трафике, backoff
-- реакция на смену сети
-- иконка в строке меню (клик открывает меню, не отдельное окно)
-- **ручная** прописка прокси в Cursor / WebStorm / Firefox + предложение перезапустить приложения
-- откат прописки к прямому IP телефона (не «системный прокси»)
-- мастер первого запуска, диагностика, автозапуск при входе в macOS
+- опциональный **логин/пароль Happ LAN** (Keychain; peer на SSID; предупреждение в чужой Wi‑Fi)
+- soft-reconnect при смене IP телефона без обрыва слушателей
+- watchdog, реакция на смену сети, автозапуск при входе в macOS
 - проверка обновлений через GitHub Releases
 
 ### Установка {#install}
@@ -61,9 +74,9 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 
 #### Готовый .dmg
 
-1. Скачайте `.dmg` с [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases) (файл вида `Happ Bridge-1.1.9-arm64.dmg`).
-2. Откройте диск: двойной клик по `.dmg` (появится диск **Happ Bridge**) и дважды нажмите **Install Happ Bridge.command** → «Установить».
-3. Если macOS блокирует **установщик**, в Терминале (диск из шага 2 должен быть открыт):
+1. Скачайте `.dmg` с [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases) (файл вида `Happ Bridge-*-arm64.dmg`).
+2. Откройте диск: двойной клик по `.dmg` → **Install Happ Bridge.command** → «Установить».
+3. Если macOS блокирует **установщик** (диск из шага 2 должен быть открыт):
 
 ```bash
 if [ ! -d "/Volumes/Happ Bridge" ]; then
@@ -85,9 +98,9 @@ xattr -cr "/Applications/Happ Bridge.app"
 open "/Applications/Happ Bridge.app"
 ```
 
-5. Разрешите доступ к локальной сети, если система спросит. Иконка - в строке меню.
+5. Разрешите доступ к локальной сети, если система спросит. Иконка — в строке меню.
 
-Подробности - в **READ ME.txt** на диске образа.
+Подробности — в **READ ME.txt** на диске образа.
 
 #### Сборка из исходников
 
@@ -99,43 +112,32 @@ npm test
 npm run dist
 ```
 
-Готовый файл: `release/Happ-Bridge-1.3.0-arm64.dmg`
-
-Разработка: `npm run dev`
+Готовый файл: `release/Happ-Bridge-1.3.0-arm64.dmg` · разработка: `npm run dev`
 
 ### Как пользоваться
 
 1. На телефоне: Happ + **Разрешить LAN подключение**.
 2. Запустите Happ Bridge, пройдите мастер, дождитесь статуса «Подключено».
 3. Вставьте в приложения `127.0.0.1:10808` (SOCKS5) / `127.0.0.1:10809` (HTTP)  
-   **или** в настройках выберите Cursor / WebStorm / Firefox → **Прописать** → согласитесь на перезапуск.
-4. Окно можно закрыть - приложение остаётся в строке меню. Откат прописки - кнопка **Откатить** (вручную).
+   **или** в настройках: Cursor / WebStorm / Firefox → **Прописать** → согласитесь на перезапуск.
+4. Окно можно закрыть — приложение остаётся в строке меню. Откат прописки — кнопка **Откатить**.
 
 ### Как это работает (технически)
 
-- **Локальный релей.** Два слушателя только на `127.0.0.1`: SOCKS5 `:10808` и HTTP `:10809`; оба форвардят TCP в SOCKS5 телефона по LAN. Системный прокси macOS не меняется.
-- **Поиск без broadcast.** Никакого mDNS/ARP/ICMP: только TCP-проба SOCKS5-порта. Кандидаты: ручной IP → IP, запомненный для текущего Wi-Fi (SSID) → недавние IP → последний IP → вся `/24` подсети (приоритет адресов `.2`–`.80` как типичные DHCP-аренды).
-- **«Пинг» = рукопожатие SOCKS5.** Клиент шлёт greeting (`05 01 00`, с паролем `05 01 02`); принимается только `VER=5` + метод no-auth/user-pass. Ответ `0xff` или мусор — не Happ: чужой открытый SOCKS не подставится. С включённым паролем требуется успешная user/pass-авторизация.
-- **Сканирование.** До 64 параллельных проб, таймаут 350 мс (500 мс с паролем; ~800 мс после старта/пробуждения). Перед первым поиском после логина ждём появления локального IPv4 (холодный старт Wi‑Fi). Полный скан собирает всех пиров в список «Телефоны в сети», быстрый реконнект — стоп на первом попадании. Прогресс `N/254` виден в UI.
-- **Выбор телефона.** Ручной IP → запомненный по SSID → единственный найденный → текущий. Если найдено несколько и предпочтения нет — мост ждёт выбора в списке, а не гадает.
-- **Watchdog.** В подключённом состоянии каждые ~8 с health-check той же SOCKS5-пробой; 3 промаха подряд — переподключение. Смена сети (fingerprint локальных IP), sleep/wake — реконнект после короткого ожидания Wi‑Fi; при недоступности телефона — бэкофф (мягче, пока есть LAN IP; иначе до 2 мин).
-- **Память.** Успешный IP привязывается к SSID и в список недавних: на своей Wi-Fi коннект мгновенный, без скана подсети.
-- **Ограничения.** Только `/24` и IPv4; телефон обязан отвечать по TCP (спящий/выключенный не найдётся — укажите IP вручную в настройках).
-
-### Ключевые слова
-
-Happ proxy, Happ LAN, SOCKS5 macOS, HTTP proxy iPhone, Telegram proxy, Cursor proxy, WebStorm proxy, Firefox proxy, локальный прокси, мост к телефону, смена IP Wi‑Fi, menu bar VPN helper.
+- **Локальный релей.** Слушатели только на `127.0.0.1`: SOCKS5 `:10808` и HTTP `:10809`; оба форвардят TCP в SOCKS5 телефона по LAN. Системный прокси macOS не меняется.
+- **Поиск без broadcast.** Никакого mDNS/ARP/ICMP: только TCP-проба SOCKS5-порта. Кандидаты: ручной IP → IP для текущего SSID → недавние → последний → `/24` подсеть.
+- **«Пинг» = рукопожатие SOCKS5.** Greeting `05 01 00` (с паролем `05 01 02`); принимается только `VER=5` + метод no-auth/user-pass.
+- **Сканирование.** До 64 параллельных проб; перед первым поиском после логина ждём локальный IPv4.
+- **Watchdog.** Health-check ~каждые 8 с; 3 промаха → реконнект; sleep/wake и смена сети учитываются.
+- **Ограничения.** Только `/24` и IPv4; спящий телефон не найдётся — укажите IP вручную.
 
 ### Безопасность
 
 - слушатели только на localhost
 - системный proxy macOS не меняется
-- прописка в приложениях - только по вашей кнопке
-- опциональный логин/пароль Happ LAN (антиспуф при поиске + прописка в приложения)
-- смена/сброс телефона рвёт живые TCP-pipe
-- настройки: пароль LAN в Keychain; домашние SSID; peer на сеть
-- мост **не шифрует** Wi‑Fi Mac↔телефон; туннель шифрует Happ
-- исходный код открыт (MIT) - см. [SECURITY.md](docs/SECURITY.md)
+- прописка в приложениях — только по вашей кнопке
+- пароль LAN в Keychain; мост **не шифрует** Wi‑Fi Mac↔телефон (туннель шифрует Happ)
+- подробнее: [SECURITY.md](docs/SECURITY.md)
 
 ### Стек
 
@@ -153,20 +155,20 @@ Electron · Vite · React · TypeScript · Tailwind
 
 Stable localhost proxy bridge to a phone running Happ on your LAN. Stop editing proxy IPs in Telegram, Cursor, Firefox, and WebStorm every time DHCP moves your phone.
 
-**Version 1.3.0** - auto-update that actually replaces the unsigned `.app` (ZIP apply after quit, no ShipIt), lean packaging (~197 MB), semantic CSS/UI polish, and clearer Russian copy.
+**Version 1.3.0** — auto-update that replaces the unsigned `.app` (ZIP apply after quit, no ShipIt), lean packaging (~197 MB), semantic CSS/UI polish.
 
-**Version 1.2.9** - design-token dark theme (consistent palette, SF Pro Text, `color-scheme: dark`), better contrast & layout stability for loading/search/inject states, dirty-close confirmation, and deeper connection logging (relay target/errors/timeouts with errno, recovery after unstable link, stale preferred-IPs and sweep timing).
+### Why
 
-**Version 1.2.1** - richer diagnostics: precise Happ reachability (auth-required / auth-failed / unreachable), end-to-end relay check, automatic subnet scan when phone IP changes, informative copyable report. Install script guards now give clear instructions instead of silent "No such file".
-
-**Version 1.1.9** - update download progress; 1.1.8 macOS hardening (cold-boot discovery, inject TCC, simpler connection UI).
-
-**Version 1.1.6** - bridge on/off, SOCKS port fix to Happ, Keychain LAN password, peer-per-SSID, Gatekeeper-friendly DMG.
+| Without Happ Bridge | With Happ Bridge |
+| :--- | :--- |
+| Phone IP changes → edit every app | Apps stay on `127.0.0.1` |
+| System proxy hacks | Localhost-only TCP relay |
+| Guessing which LAN device is Happ | SOCKS5 handshake probe + optional LAN auth |
 
 ### Quick start
 
 1. Download the `.dmg` from [Releases](https://github.com/anatoly-kulishov/happ-bridge/releases).
-2. Open the disk: double-click the `.dmg` (a **Happ Bridge** disk appears), then open **Install Happ Bridge.command** → Install (copies to `/Applications`; unsigned, no Apple Developer ID).
+2. Open the disk → **Install Happ Bridge.command** → Install (copies to `/Applications`; unsigned, no Apple Developer ID).
 3. If macOS blocks the **installer** (disk from step 2 must be open):
 
 ```bash
@@ -191,7 +193,7 @@ open "/Applications/Happ Bridge.app"
 
 5. Allow Local Network access if prompted. The icon lives in the menu bar.
 
-Point apps at `127.0.0.1:10808` (SOCKS5) and `127.0.0.1:10809` (HTTP), or use **Прописать** in Settings for Cursor / WebStorm / Firefox, then restart those apps when offered.
+Point apps at `127.0.0.1:10808` (SOCKS5) and `127.0.0.1:10809` (HTTP), or use **Прописать** in Settings for Cursor / WebStorm / Firefox.
 
 Build from source: `npm install && npm test && npm run dist`
 
@@ -208,3 +210,7 @@ Issues and PRs welcome. Keep changes focused; run `npm test` and `npm run build`
 ## Disclaimer
 
 Happ Bridge is an independent open-source utility. It is not affiliated with Happ / Happ.su. Use only on networks and devices you own or administer.
+
+---
+
+**If Happ Bridge saves you from IP hell — ⭐ the [repo](https://github.com/anatoly-kulishov/happ-bridge).**
