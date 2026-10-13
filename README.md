@@ -41,7 +41,7 @@ flowchart LR
 
 ### Зачем это нужно
 
-Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную сеть. IP телефона часто меняется — и в Telegram, Cursor, Firefox, WebStorm приходится править адрес вручную.
+Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную сеть. IP телефона часто меняется - и в Telegram, Cursor, Firefox, WebStorm приходится править адрес вручную.
 
 **Happ Bridge** находит телефон в Wi‑Fi и держит постоянные адреса на Mac (таблица выше).
 
@@ -56,9 +56,9 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 - **lean packaging**: `.app` ~197 MB, prune Framework locales, Preact + hand CSS, lazy Wizard/Inject/diagnostics
 - **тёмная тема на дизайн-токенах** (`--hb-*`): единая палитра, semantic UI, системные шрифты и `color-scheme: dark`
 - **контраст и анти-скажки**: читабельный мелкий текст, стабильная вёрстка при загрузке/поиске/прописке
-- **защита от потери данных**: при закрытии окна с несохранёнными настройками — подтверждение
+- **защита от потери данных**: при закрытии окна с несохранёнными настройками - подтверждение
 - **диагностика подключения** в `main.log`: ошибки и таймауты к телефону, смена target, восстановление
-- автопоиск Happ в Wi‑Fi; несколько телефонов — список и ручной выбор
+- автопоиск Happ в Wi‑Fi; несколько телефонов - список и ручной выбор
 - устойчивый поиск после перезагрузки Mac (ожидание Wi‑Fi, backoff, подсказка Local Network)
 - один тумблер **«Мост к Happ»**
 - **реальные иконки** Cursor / WebStorm / Firefox в списке прописки
@@ -98,9 +98,9 @@ xattr -cr "/Applications/Happ Bridge.app"
 open "/Applications/Happ Bridge.app"
 ```
 
-5. Разрешите доступ к локальной сети, если система спросит. Иконка — в строке меню.
+5. Разрешите доступ к локальной сети, если система спросит. Иконка - в строке меню.
 
-Подробности — в **READ ME.txt** на диске образа.
+Подробности - в **READ ME.txt** на диске образа.
 
 #### Сборка из исходников
 
@@ -120,7 +120,7 @@ npm run dist
 2. Запустите Happ Bridge, пройдите мастер, дождитесь статуса «Подключено».
 3. Вставьте в приложения `127.0.0.1:10808` (SOCKS5) / `127.0.0.1:10809` (HTTP)  
    **или** в настройках: Cursor / WebStorm / Firefox → **Прописать** → согласитесь на перезапуск.
-4. Окно можно закрыть — приложение остаётся в строке меню. Откат прописки — кнопка **Откатить**.
+4. Окно можно закрыть - приложение остаётся в строке меню. Откат прописки - кнопка **Откатить**.
 
 ### Как это работает (технически)
 
@@ -129,13 +129,13 @@ npm run dist
 - **«Пинг» = рукопожатие SOCKS5.** Greeting `05 01 00` (с паролем `05 01 02`); принимается только `VER=5` + метод no-auth/user-pass.
 - **Сканирование.** До 64 параллельных проб; перед первым поиском после логина ждём локальный IPv4.
 - **Watchdog.** Health-check ~каждые 8 с; 3 промаха → реконнект; sleep/wake и смена сети учитываются.
-- **Ограничения.** Только `/24` и IPv4; спящий телефон не найдётся — укажите IP вручную.
+- **Ограничения.** Только `/24` и IPv4; спящий телефон не найдётся - укажите IP вручную.
 
 ### Безопасность
 
 - слушатели только на localhost
 - системный proxy macOS не меняется
-- прописка в приложениях — только по вашей кнопке
+- прописка в приложениях - только по вашей кнопке
 - пароль LAN в Keychain; мост **не шифрует** Wi‑Fi Mac↔телефон (туннель шифрует Happ)
 - подробнее: [SECURITY.md](docs/SECURITY.md)
 
@@ -155,7 +155,7 @@ Electron · Vite · React · TypeScript · Tailwind
 
 Stable localhost proxy bridge to a phone running Happ on your LAN. Stop editing proxy IPs in Telegram, Cursor, Firefox, and WebStorm every time DHCP moves your phone.
 
-**Version 1.3.0** — auto-update that replaces the unsigned `.app` (ZIP apply after quit, no ShipIt), lean packaging (~197 MB), semantic CSS/UI polish.
+**Version 1.3.0** - auto-update that replaces the unsigned `.app` (ZIP apply after quit, no ShipIt), lean packaging (~197 MB), semantic CSS/UI polish.
 
 ### Why
 
@@ -213,4 +213,4 @@ Happ Bridge is an independent open-source utility. It is not affiliated with Hap
 
 ---
 
-**If Happ Bridge saves you from IP hell — ⭐ the [repo](https://github.com/anatoly-kulishov/happ-bridge).**
+**If Happ Bridge saves you from IP hell - ⭐ the [repo](https://github.com/anatoly-kulishov/happ-bridge).**
