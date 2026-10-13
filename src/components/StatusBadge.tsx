@@ -1,4 +1,4 @@
-import { Loader2, ShieldCheck } from 'lucide-react'
+import { Loader2, ShieldCheck } from '../icons'
 import type { BridgeStatus } from '../../electron/types'
 import { statusPresentation } from '../../electron/types'
 
@@ -24,8 +24,8 @@ export function StatusBadge({
     !enabled || paused
       ? {
           label: !enabled ? 'Мост выключен' : 'Отключено вами',
-          badgeClass: 'border-[var(--hb-border)] bg-[var(--hb-bg-soft)] text-[var(--hb-text-muted)]',
-          dotClass: 'bg-zinc-400 status-dot-idle',
+          badgeClass: 'badge badge-muted',
+          dotClass: 'dot-muted status-dot-idle',
           tone: 'grey' as const,
         }
       : statusPresentation(status, phoneIp)
@@ -39,24 +39,20 @@ export function StatusBadge({
     <div className="space-y-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <div
-          className={`inline-flex items-center gap-2.5 border ${item.badgeClass} ${
-            compact ? 'rounded-[10px] px-2.5 py-1.5 text-sm' : 'rounded-xl px-3.5 py-2.5 text-[15px] font-medium'
+          className={`${item.badgeClass} ${
+            compact ? 'badge-compact' : 'badge-lg'
           }`}
           role="status"
           aria-live="polite"
           title={item.label}
         >
-          <span
-            className={`status-dot ${item.dotClass}`}
-            title={item.label}
-            aria-hidden
-          />
+          <span className={item.dotClass} title={item.label} aria-hidden />
           <span className="tracking-tight">{item.label}</span>
         </div>
         {lanAuthOn && enabled && !paused && (
           <span
-            className="inline-flex size-7 items-center justify-center rounded-full border border-sky-400/30 bg-[var(--hb-accent-soft)] text-sky-200"
-            title="Пароль Happ LAN задан — подключения без логина отсекаются"
+            className="inline-flex size-7 items-center justify-center rounded-[8px] border border-sky-400/30 bg-[var(--hb-accent-soft)] text-sky-200"
+            title="Пароль Happ LAN задан: подключения без логина отсекаются"
             aria-label="LAN auth включён"
           >
             <ShieldCheck size={14} aria-hidden />

@@ -1,8 +1,20 @@
-import { Loader2 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import type { BridgeState } from '../electron/types'
-import { Wizard } from './components/Wizard'
+import { Loader2 } from './icons'
 import { Settings } from './components/Settings'
+
+const Wizard = lazy(() =>
+  import('./components/Wizard').then((m) => ({ default: m.Wizard })),
+)
+
+function Boot() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2.5 text-sm muted">
+      <Loader2 size={22} className="animate-spin text-sky-400" />
+      Загрузка…
+    </div>
+  )
+}
 
 export default function App() {
   const [state, setState] = useState<BridgeState | null>(null)
@@ -17,33 +29,28 @@ export default function App() {
     setState(await window.happBridge.getState())
   }, [])
 
-  if (!state) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2.5 text-sm muted">
-        <Loader2 size={22} className="animate-spin text-sky-400" aria-hidden />
-        Загрузка…
-      </div>
-    )
-  }
+  if (!state) return <Boot />
 
   const showWizard = forceWizard || !state.settings.wizardDone
 
   if (showWizard) {
     return (
-      <Wizard
-        state={state}
-        onDone={async () => {
-          await window.happBridge.finishWizard()
-          setForceWizard(false)
-          await refresh()
-        }}
-        onDismiss={
-          state.settings.wizardDone || forceWizard
-            ? () => setForceWizard(false)
-            : undefined
-        }
-        onState={setState}
-      />
+      <Suspense fallback={<Boot />}>
+        <Wizard
+          state={state}
+          onDone={async () => {
+            await window.happBridge.finishWizard()
+            setForceWizard(false)
+            await refresh()
+          }}
+          onDismiss={
+            state.settings.wizardDone || forceWizard
+              ? () => setForceWizard(false)
+              : undefined
+          }
+          onState={setState}
+        />
+      </Suspense>
     )
   }
 

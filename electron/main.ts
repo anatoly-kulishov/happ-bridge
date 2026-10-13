@@ -11,15 +11,8 @@ import {
 } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import { resolveInjectIcons, type InjectIconMap } from './appIcons'
-import {
-  applyInject,
-  injectStatus,
-  relaunchInjectApps,
-  revertInject,
-  type InjectTarget,
-  type InjectTargetInfo,
-} from './inject'
+import type { InjectIconMap } from './appIcons'
+import type { InjectTarget, InjectTargetInfo } from './inject'
 import { presetText, type CopyPreset } from './presets'
 import { BridgeSession } from './session'
 import { socksAuthFromSettings, statusPresentation, traySecurityPresentation } from './types'
@@ -28,6 +21,11 @@ import { createUpdater } from './updater'
 import { log, logFilePath, readLogTail } from './log'
 
 const isDev = !app.isPackaged
+
+// Cap V8 heap early — menu-bar utility on weak Macs.
+if (!isDev) {
+  app.commandLine.appendSwitch('js-flags', '--max-old-space-size=192')
+}
 
 let tray: Tray | null = null
 let mainWindow: BrowserWindow | null = null
@@ -38,30 +36,51 @@ let quitCleanupDone = false
 let updater: ReturnType<typeof createUpdater> | null = null
 let quitInFlight: Promise<void> | null = null
 
-/** Dispose session, then quitAndInstall when an update is ready (else plain quit). */
-function quitApp(): Promise<void> {
+/** Dispose session, then quit (or apply a pending update if requested). */
+function quitApp(opts?: { installUpdate?: boolean }): Promise<void> {
   if (quitCleanupDone) {
     app.quit()
     return Promise.resolve()
   }
   if (quitInFlight) return quitInFlight
   isQuitting = true
+  const wantUpdate = Boolean(opts?.installUpdate && updater?.canInstall())
   quitInFlight = (async () => {
     try {
       await session?.dispose()
     } finally {
+      if (wantUpdate && updater) {
+        // Mark cleanup done so before-quit does not preventDefault around app.exit.
+        quitCleanupDone = true
+        const applied = await updater.install()
+        if (applied) return
+        // Install failed: stay alive so the user sees the error banner.
+        isQuitting = false
+        quitCleanupDone = false
+        quitInFlight = null
+        broadcast()
+        return
+      }
       quitCleanupDone = true
-      if (updater?.canInstall() && updater.install()) return
       app.quit()
     }
   })()
   return quitInFlight
 }
 
+function pushStateToRenderer(): void {
+  if (!session || !mainWindow || mainWindow.isDestroyed()) return
+  // Hidden menu-bar panel: skip IPC so Chromium/React stay cold.
+  if (!mainWindow.isVisible()) return
+  mainWindow.webContents.send('bridge:state', session.getState())
+}
+
 function broadcast(): void {
   if (!session) return
   const state = session.getState()
-  mainWindow?.webContents.send('bridge:state', state)
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    mainWindow.webContents.send('bridge:state', state)
+  }
   syncTray(state)
 }
 
@@ -85,6 +104,9 @@ function createWindow(show = true): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      backgroundThrottling: true,
+      spellcheck: false,
+      v8CacheOptions: 'code',
     },
   })
 
@@ -93,6 +115,9 @@ function createWindow(show = true): void {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
+
+  // Catch up UI after hide — broadcasts while hidden were skipped.
+  mainWindow.on('show', () => pushStateToRenderer())
 
   mainWindow.on('close', (e) => {
     if (isQuitting) return
@@ -111,7 +136,7 @@ function createWindow(show = true): void {
             defaultId: 1,
             cancelId: 1,
             message: 'Есть несохранённые изменения',
-            detail: 'Скрытие окна их не сохранит. Нажмите «Сохранить» в панели, если нужно.',
+            detail: 'При скрытии окна изменения не сохранятся. Нажмите «Сохранить» в панели, если нужно.',
           })
           if (response === 1) return
         }
@@ -127,7 +152,12 @@ function createWindow(show = true): void {
   })
 }
 
+const trayIconCache = new Map<string, Electron.NativeImage>()
+
 function trayIcon(color: 'green' | 'yellow' | 'red' | 'grey'): Electron.NativeImage {
+  const hit = trayIconCache.get(color)
+  if (hit) return hit
+
   const file = `tray-${color}.png`
   const file2x = `tray-${color}@2x.png`
   const bases = [
@@ -148,14 +178,22 @@ function trayIcon(color: 'green' | 'yellow' | 'red' | 'grey'): Electron.NativeIm
         height: 36,
         buffer: fs.readFileSync(p2),
       })
-      if (!img.isEmpty()) return img
+      if (!img.isEmpty()) {
+        trayIconCache.set(color, img)
+        return img
+      }
     }
 
     const img = nativeImage.createFromPath(fs.existsSync(p1) ? p1 : p2)
-    if (!img.isEmpty()) return img
+    if (!img.isEmpty()) {
+      trayIconCache.set(color, img)
+      return img
+    }
   }
 
-  return fallbackTrayIcon(color)
+  const fallback = fallbackTrayIcon(color)
+  trayIconCache.set(color, fallback)
+  return fallback
 }
 
 /** Always-visible status LED if pack paths break. */
@@ -260,7 +298,7 @@ function syncTray(state: {
       {
         label: updater?.canInstall() ? 'Установить обновление и выйти' : 'Выйти',
         click: () => {
-          void quitApp()
+          void quitApp({ installUpdate: updater?.canInstall() })
         },
       },
     ]),
@@ -389,46 +427,53 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('bridge:installUpdate', async () => {
-    void quitApp()
+    void quitApp({ installUpdate: true })
   })
 
-  const injectStatusWithIcons = async (): Promise<InjectTargetInfo[]> => {
-    const status = injectStatus(undefined, injectBackupPath())
+  // inject/appIcons stay out of cold start — loaded on first inject IPC.
+  type InjectMod = typeof import('./inject')
+
+  async function withInject<T>(
+    run: (inject: InjectMod, icons: InjectIconMap) => Promise<T> | T,
+  ): Promise<T> {
+    const [inject, { resolveInjectIcons }] = await Promise.all([
+      import('./inject'),
+      import('./appIcons'),
+    ])
     const icons = await resolveInjectIcons().catch((): InjectIconMap => ({}))
-    return status.map((t) => ({ ...t, icon: icons[t.id] ?? null }))
+    return run(inject, icons)
   }
 
-  ipcMain.handle('bridge:injectStatus', () => injectStatusWithIcons())
+  const withIcons = (status: InjectTargetInfo[], icons: InjectIconMap): InjectTargetInfo[] =>
+    status.map((t) => ({ ...t, icon: icons[t.id] ?? null }))
 
-  ipcMain.handle('bridge:injectApply', async (_e, targets: InjectTarget[]) => {
-    const s = session!.getState()
-    const result = await applyInject(
-      targets,
-      injectPortsFromState(s),
-      undefined,
-      injectBackupPath(),
-    )
-    const icons = await resolveInjectIcons().catch((): InjectIconMap => ({}))
-    return {
-      ...result,
-      status: result.status.map((t) => ({ ...t, icon: icons[t.id] ?? null })),
-    }
-  })
+  ipcMain.handle('bridge:injectStatus', () =>
+    withInject(({ injectStatus }, icons) => withIcons(injectStatus(undefined, injectBackupPath()), icons)),
+  )
 
-  ipcMain.handle('bridge:injectRevert', async (_e, targets: InjectTarget[]) => {
-    const s = session!.getState()
-    const result = await revertInject(
-      targets,
-      injectPortsFromState(s),
-      undefined,
-      injectBackupPath(),
-    )
-    const icons = await resolveInjectIcons().catch((): InjectIconMap => ({}))
-    return {
-      ...result,
-      status: result.status.map((t) => ({ ...t, icon: icons[t.id] ?? null })),
-    }
-  })
+  ipcMain.handle('bridge:injectApply', async (_e, targets: InjectTarget[]) =>
+    withInject(async ({ applyInject }, icons) => {
+      const result = await applyInject(
+        targets,
+        injectPortsFromState(session!.getState()),
+        undefined,
+        injectBackupPath(),
+      )
+      return { ...result, status: withIcons(result.status, icons) }
+    }),
+  )
+
+  ipcMain.handle('bridge:injectRevert', async (_e, targets: InjectTarget[]) =>
+    withInject(async ({ revertInject }, icons) => {
+      const result = await revertInject(
+        targets,
+        injectPortsFromState(session!.getState()),
+        undefined,
+        injectBackupPath(),
+      )
+      return { ...result, status: withIcons(result.status, icons) }
+    }),
+  )
 
   ipcMain.handle('bridge:injectRelaunchOffer', async (_e, targets: InjectTarget[]) => {
     const labels = targets
@@ -440,9 +485,10 @@ function registerIpc(): void {
       defaultId: 0,
       cancelId: 1,
       message: 'Перезапустить приложения?',
-      detail: `${labels}\n\nЧтобы подтянуть новый прокси, нужен полный перезапуск (не просто окно).`,
+      detail: `${labels}\n\nЧтобы применить новый прокси, нужен полный перезапуск приложения, а не только окна.`,
     })
     if (response !== 0) return { restarted: false as const, results: [] }
+    const { relaunchInjectApps } = await import('./inject')
     const results = await relaunchInjectApps(targets)
     return { restarted: true as const, results }
   })
@@ -504,7 +550,12 @@ app.whenReady().then(async () => {
   }
   session.startWatch()
 
-  if (!isDev) void updater.check()
+  // Defer electron-updater load — keeps cold start lean on weak Macs.
+  if (!isDev) {
+    setTimeout(() => {
+      void updater?.check()
+    }, 45_000)
+  }
 })
 
 app.on('before-quit', (event) => {

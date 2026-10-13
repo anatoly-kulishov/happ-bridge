@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0 - 2026-10-13
+
+### Fixed
+- **Updater**: на unsigned macOS-сборке скачанный ZIP ставится вручную (замена `.app` после exit + `xattr` + `open`). Squirrel.Mac / `quitAndInstall` больше не оставляют старую версию в Applications
+
+### Changed
+- **UI**: semantic CSS + preflight (списки, кнопки, log-line, icon-btn в заголовках)
+- **Copy**: пользовательские строки без длинных тире, яснее ошибки и подсказки
+- **Packaging**: lean `.app` (~197 MB), Framework `*.lproj` prune через afterPack, metrics ~92
+
+### Added
+- `scripts/test-mac-update-install.ts` - e2e замены `.app` из ZIP без Electron
+
 ## 1.2.9 - 2026-10-10
 
 ### Added

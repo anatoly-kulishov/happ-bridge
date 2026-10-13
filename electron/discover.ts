@@ -1,7 +1,7 @@
 import net from 'node:net'
 import os from 'node:os'
 import { probeSocks5, trackAbortSocket, type SocksAuth } from './relay'
-import { log } from './log'
+import { log, logDebug } from './log'
 
 export type DiscoverOptions = {
   socksPort: number
@@ -105,10 +105,10 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
   let probed = 0
   let total = ordered.length + hosts.length
   if (stalePreferred.length > 0) {
-    log('discover', 'preferred off-net (stale, not routed): %o — sweep %d hosts / total %d',
+    logDebug('discover', 'preferred off-net (stale, not routed): %o — sweep %d hosts / total %d',
       stalePreferred, hosts.length, total)
   } else {
-    log('discover', 'probe scope: preferred=%d (live=%d) sweep=%d total=%d',
+    logDebug('discover', 'probe scope: preferred=%d (live=%d) sweep=%d total=%d',
       ordered.length, livePreferred.length, hosts.length, total)
   }
   const discoverStart = Date.now()
@@ -122,7 +122,7 @@ export async function discoverPhones(opts: DiscoverOptions): Promise<string[]> {
     if (ok) {
       log('discover', 'HIT ip=%s rtt=%dms', ip, Date.now() - start)
     } else {
-      if (ordered.includes(ip)) log('discover', 'UDP probe failed ip=%s rtt=%dms, trying TCP…', ip, Date.now() - start)
+      if (ordered.includes(ip)) logDebug('discover', 'UDP probe failed ip=%s rtt=%dms, trying TCP…', ip, Date.now() - start)
       const tcpOk = await probeTcp(ip, socksPort, 1000, abort ?? signal)
       if (tcpOk) log('discover', 'TCP fallback HIT ip=%s', ip)
       if (signal?.aborted || abort?.aborted) return null
@@ -406,7 +406,7 @@ export async function waitForPhoneRoute(opts?: {
 
   const routeTimeoutMs = opts?.routeTimeoutMs ?? 45_000
   const deadline = Date.now() + routeTimeoutMs
-  log('discover', 'waitForPhoneRoute: preferred off-route, waiting up to %dms…', routeTimeoutMs)
+  logDebug('discover', 'waitForPhoneRoute: preferred off-route, waiting up to %dms…', routeTimeoutMs)
   while (!signal?.aborted && Date.now() < deadline) {
     await sleepMs(Math.min(pollMs, Math.max(0, deadline - Date.now())), signal)
     if (signal?.aborted) break
@@ -436,13 +436,25 @@ function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
+/** Short cache for netPoll — avoids os.networkInterfaces() thrash every tick. */
+let fingerprintCache: { at: number; value: string } | null = null
+const FINGERPRINT_CACHE_MS = 1_000
+
 /**
  * Stable LAN fingerprint over all non-internal IPv4s. Includes VPN/utun so a
  * late OpenVPN connect after reboot triggers netPoll reconnect (phone-/24
  * filtering previously hid utun when the remembered peer was on Wi‑Fi).
+ * Pass `localIps` to skip the cache (debug / already-fetched lists).
  */
-export function networkFingerprint(localIps = localIpv4Addresses()): string {
-  return [...localIps].sort().join(',')
+export function networkFingerprint(localIps?: string[]): string {
+  if (localIps) return [...localIps].sort().join(',')
+  const now = Date.now()
+  if (fingerprintCache && now - fingerprintCache.at < FINGERPRINT_CACHE_MS) {
+    return fingerprintCache.value
+  }
+  const value = [...localIpv4Addresses()].sort().join(',')
+  fingerprintCache = { at: now, value }
+  return value
 }
 
 /** How long probe failures may last before LOST (phone Wi‑Fi power-save blips). */

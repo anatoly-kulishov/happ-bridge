@@ -14,19 +14,22 @@ import {
   Sparkles,
   Wifi,
   Wrench,
-} from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+} from '../icons'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import type { BridgeState, DiagnosticCheck, UpdateInfo } from '../../electron/types'
 import { DEFAULT_SETTINGS } from '../../electron/types'
 import { useBridgeActions } from '../hooks/useBridgeActions'
 import { AlertBanner, parseBridgeError } from './AlertBanner'
 import { BusyIcon } from './BusyIcon'
 import { Card } from './Card'
-import { InjectAppsPanel } from './InjectAppsPanel'
 import { PeerList } from './PeerList'
 import { ProxyCopyButton } from './ProxyCopyButton'
 import { StatusBadge } from './StatusBadge'
 import { Switch } from './Switch'
+
+const InjectAppsPanel = lazy(() =>
+  import('./InjectAppsPanel').then((m) => ({ default: m.InjectAppsPanel })),
+)
 
 type Props = {
   state: BridgeState
@@ -195,38 +198,14 @@ export function Settings({ state, onState, onShowWizard }: Props) {
     }
   }
 
-  const headerDotClass =
-    state.status === 'connected'
-      ? 'bg-emerald-400'
-      : state.status === 'unstable'
-        ? 'bg-amber-400'
-        : state.settings.enabled
-          ? 'bg-amber-400'
-          : 'bg-zinc-500 status-dot-idle'
-
   return (
     <div className="app-shell">
       <main className="app-scroll">
         <header className="flex items-start justify-between gap-3 pb-1">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold tracking-tight text-[var(--hb-text)]">
-                Happ Bridge
-              </h1>
-              <span
-                className={`status-dot ${headerDotClass}`}
-                title={
-                  state.status === 'connected'
-                    ? 'Подключено'
-                    : state.status === 'unstable'
-                      ? 'Связь нестабильна'
-                      : state.settings.enabled
-                        ? 'Ищем телефон или нет связи'
-                        : 'Мост выключен'
-                }
-                aria-hidden
-              />
-            </div>
+            <h1 className="text-lg font-semibold tracking-tight text-[var(--hb-text)]">
+              Happ Bridge
+            </h1>
             <p className="mt-0.5 text-xs muted">Локальный мост к Happ на телефоне</p>
           </div>
           {state.wifiSsid && (
@@ -262,7 +241,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
               hint={
                 state.settings.enabled
                   ? 'Автопоиск и переподключение включены'
-                  : 'Включите — поиск телефона запустится сам'
+                  : 'Включите, и поиск телефона запустится сам'
               }
               disabled={toggling}
             />
@@ -279,8 +258,8 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                 <button
                   type="button"
                   disabled={markingHome}
-                  className="btn-secondary h-8 px-2.5 text-xs"
-                  title={`Отметить «${state.wifiSsid}» как домашнюю — без предупреждения о публичном Wi‑Fi`}
+                  className="btn-secondary btn-sm"
+                  title={`Отметить «${state.wifiSsid}» как домашнюю: без предупреждения о публичном Wi‑Fi`}
                   onClick={() => void markHome()}
                 >
                   <BusyIcon busy={markingHome} icon={Home} size={14} />
@@ -292,7 +271,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
             {state.wifiSsid
               ? `«${state.wifiSsid}» не в домашних сетях, логин/пароль Happ не заданы.`
               : 'Логин/пароль Happ не заданы.'}{' '}
-            В общественном Wi‑Fi сосед может сесть на ваш SOCKS.
+            В публичной сети сосед может подключиться к вашему SOCKS.
           </AlertBanner>
         )}
 
@@ -305,7 +284,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                 {bridgeError.kind === 'port-in-use' && (
                   <button
                     type="button"
-                    className="btn-secondary h-8 px-2.5 text-xs"
+                    className="btn-secondary btn-sm"
                     title="Открыть расширенные настройки и сменить порты SOCKS5 / HTTP"
                     onClick={openPortsSettings}
                   >
@@ -316,7 +295,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                 {bridgeError.kind === 'auth' && (
                   <button
                     type="button"
-                    className="btn-secondary h-8 px-2.5 text-xs"
+                    className="btn-secondary btn-sm"
                     title="Указать логин и пароль Happ LAN"
                     onClick={openLanAuthSettings}
                   >
@@ -326,7 +305,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                 {bridgeError.kind === 'validation' && (
                   <button
                     type="button"
-                    className="btn-secondary h-8 px-2.5 text-xs"
+                    className="btn-secondary btn-sm"
                     title="Открыть расширенные настройки"
                     onClick={openPortsSettings}
                   >
@@ -340,7 +319,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                   <button
                     type="button"
                     disabled={busy || toggling}
-                    className="btn-secondary h-8 px-2.5 text-xs"
+                    className="btn-secondary btn-sm"
                     title="Снова поискать телефон в сети"
                     onClick={() => void findPhone()}
                   >
@@ -367,7 +346,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
               }}
               title={connected ? 'Обновить список без разрыва' : 'Новый поиск'}
               aria-label={connected ? 'Обновить список' : 'Новый поиск'}
-              className="icon-btn"
+              className="icon-btn icon-btn-sm"
             >
               <BusyIcon busy={busy || scanning} icon={RefreshCw} size={14} />
             </button>
@@ -391,7 +370,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           />
           {state.peers.length > 1 && state.status === 'disconnected' && (
             <p className="mt-2 text-xs leading-relaxed muted">
-              Несколько телефонов — нажмите нужный IP. Активный повторно — отключить.
+              Несколько телефонов: нажмите нужный IP. Повторный клик по активному отключает.
             </p>
           )}
         </Card>
@@ -455,7 +434,9 @@ export function Settings({ state, onState, onShowWizard }: Props) {
         </Card>
 
         <Card title="Приложения">
-          <InjectAppsPanel onState={onState} showHeader={false} />
+          <Suspense fallback={<p className="text-xs muted">Загрузка…</p>}>
+            <InjectAppsPanel onState={onState} showHeader={false} />
+          </Suspense>
         </Card>
 
         <Card
@@ -466,7 +447,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                 type="button"
                 disabled={diagnosing || busy}
                 onClick={() => void copyDiagnostics()}
-                className="icon-btn"
+                className="icon-btn icon-btn-sm"
                 title={diagCopied ? 'Скопировано' : 'Скопировать отчёт'}
                 aria-label={diagCopied ? 'Скопировано' : 'Скопировать отчёт'}
               >
@@ -479,7 +460,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                   setDiagHidden(false)
                   void diagnose()
                 }}
-                className="icon-btn"
+                className="icon-btn icon-btn-sm"
                 title={diagnosing ? 'Проверяю…' : 'Запустить диагностику'}
                 aria-label={diagnosing ? 'Проверяю…' : 'Запустить диагностику'}
               >
@@ -505,7 +486,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
           )}
           {(!state.diagnostics || state.diagnostics.length === 0 || diagHidden) && (
             <p className="text-xs leading-relaxed muted">
-              «Запустить» - проверки сети. «Отчёт» - JSON со снимком и хвостом лога.
+              Кнопка диагностики проверяет сеть. «Отчёт» копирует JSON со снимком состояния и хвостом лога.
             </p>
           )}
         </Card>
@@ -586,7 +567,7 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                       className="text-xs muted transition-colors hover:text-[var(--hb-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hb-ring)]"
                       title={
                         clearPassword
-                          ? 'Отмечено к удалению — нажмите «Сохранить»'
+                          ? 'Отмечено к удалению. Нажмите «Сохранить»'
                           : 'Удалить пароль LAN из Keychain macOS'
                       }
                       onClick={() => {
@@ -699,28 +680,29 @@ export function Settings({ state, onState, onShowWizard }: Props) {
       </main>
 
       <footer className="app-footer">
-        <button
-          type="button"
-          className="btn-ghost"
-          onClick={onShowWizard}
-          title="Открыть мастер настройки"
-        >
-          <Plug size={16} aria-hidden />
-          Мастер
-        </button>
-        {hasUnsaved && (
-          <span
-            className="inline-block size-2 shrink-0 animate-pulse rounded-full bg-amber-300"
-            title="Есть несохранённые изменения"
-            aria-label="Есть несохранённые изменения"
-          />
-        )}
-        <div className="flex-1" />
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={onShowWizard}
+            title="Открыть мастер настройки"
+          >
+            <Plug size={16} aria-hidden />
+            Мастер
+          </button>
+          {hasUnsaved && (
+            <span
+              className="inline-block size-2 shrink-0 animate-pulse rounded-full bg-amber-300"
+              title="Есть несохранённые изменения"
+              aria-label="Есть несохранённые изменения"
+            />
+          )}
+        </div>
         <button
           type="button"
           disabled={saving}
           onClick={() => void save()}
-          className="btn-primary min-w-[7.5rem]"
+          className="btn-primary"
           title={saved ? 'Сохранено' : saving ? 'Сохраняю…' : 'Сохранить настройки'}
         >
           {saving ? (
@@ -756,7 +738,7 @@ function UpdateRow({
 
   return (
     <div
-      className={`space-y-2 rounded-[10px] border px-3 py-2.5 ${
+      className={`space-y-2 rounded-[10px] border px-2.5 py-1.5 ${
         errored
           ? 'border-red-400/25 bg-[var(--hb-danger-soft)]'
           : ready
@@ -764,10 +746,10 @@ function UpdateRow({
             : 'border-[var(--hb-border)] bg-black/15'
       }`}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p
-            className={`text-xs leading-relaxed ${
+            className={`text-xs leading-snug ${
               errored ? 'text-red-200' : ready ? 'text-emerald-200' : 'muted'
             }`}
           >
@@ -775,7 +757,7 @@ function UpdateRow({
           </p>
           {percent != null && (
             <div
-              className="mt-2 flex items-center gap-2"
+              className="mt-1.5 flex items-center gap-2"
               role="progressbar"
               aria-valuenow={percent}
               aria-valuemin={0}
@@ -796,18 +778,18 @@ function UpdateRow({
         {ready ? (
           <button
             type="button"
-            className="icon-btn border-emerald-400/30 text-emerald-300 hover:text-emerald-200"
+            className="icon-btn icon-btn-sm"
             title="Установить обновление"
             aria-label="Установить обновление"
             onClick={onInstall}
           >
-            <Download size={14} aria-hidden />
+            <Download size={14} className="text-emerald-300" aria-hidden />
           </button>
         ) : (
           <button
             type="button"
             disabled={busy}
-            className="icon-btn"
+            className="icon-btn icon-btn-sm"
             title={downloading ? 'Скачиваем…' : busy ? 'Проверяю…' : 'Проверить обновления'}
             aria-label={downloading ? 'Скачиваем…' : busy ? 'Проверяю…' : 'Проверить обновления'}
             onClick={onCheck}
@@ -839,7 +821,7 @@ function DiagnosticsList({ items }: { items: DiagnosticCheck[] }) {
   const statusTitle = (status: DiagnosticCheck['status']) =>
     status === 'ok' ? 'OK' : status === 'warn' ? 'Внимание' : 'Ошибка'
   return (
-    <ul className="space-y-2.5 rounded-[10px] border border-[var(--hb-border)] bg-black/20 p-3">
+    <ul className="stack stack-2.5 rounded-[10px] border border-[var(--hb-border)] bg-black/20 p-3">
       {items.map((item) => (
         <li key={item.id} className="text-sm" title={`${item.label}: ${item.detail}`}>
           <p className={`flex items-center gap-2 font-medium ${statusColor(item.status)}`}>
@@ -890,10 +872,10 @@ function Field({
         type={type}
         name={name}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(e.currentTarget.value)}
         placeholder={placeholder}
         autoComplete="off"
-        spellCheck={false}
+        spellcheck={false}
         inputMode={inputMode}
         className="field-input"
       />

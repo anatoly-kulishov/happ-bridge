@@ -117,8 +117,9 @@ export function statusPresentation(
         tone: 'green',
         label: phoneIp ? `Подключено · ${phoneIp}` : 'Подключено',
         trayTip: phoneIp ? `Happ Bridge · ${phoneIp}` : 'Happ Bridge · подключено',
-        badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-        dotClass: 'bg-emerald-400',
+        badgeClass: 'badge badge-ok',
+        // Static when healthy — no infinite CSS pulse (GPU/compositor).
+        dotClass: 'dot-ok status-dot-idle',
       }
     case 'unstable':
       return {
@@ -127,24 +128,24 @@ export function statusPresentation(
         trayTip: phoneIp
           ? `Happ Bridge · нестабильно · ${phoneIp}`
           : 'Happ Bridge · связь нестабильна',
-        badgeClass: 'bg-amber-500/15 text-amber-200 border-amber-500/30',
-        dotClass: 'bg-amber-400',
+        badgeClass: 'badge badge-warn',
+        dotClass: 'dot-warn',
       }
     case 'searching':
       return {
         tone: 'yellow',
         label: 'Ищем телефон…',
         trayTip: 'Happ Bridge · ищем телефон…',
-        badgeClass: 'bg-amber-500/15 text-amber-200 border-amber-500/30',
-        dotClass: 'bg-amber-400',
+        badgeClass: 'badge badge-warn',
+        dotClass: 'dot-warn',
       }
     case 'disconnected':
       return {
         tone: 'red',
         label: 'Телефон не найден',
         trayTip: 'Happ Bridge · телефон не найден',
-        badgeClass: 'bg-red-500/15 text-red-300 border-red-500/30',
-        dotClass: 'bg-red-400',
+        badgeClass: 'badge badge-danger',
+        dotClass: 'dot-danger status-dot-idle',
       }
     default: {
       const _exhaustive: never = status

@@ -44,6 +44,12 @@ import {
 } from '../electron/inject'
 import { ProxyRelay, probePort, probeSocks5 } from '../electron/relay'
 import { happCheckFromResult, relayCheckFromResult } from '../electron/diagnostics'
+import {
+  APP_BUNDLE_NAME,
+  buildReplaceScript,
+  findExtractedApp,
+  resolveAppBundlePath,
+} from '../electron/macUpdateInstall'
 import { httpProxyUrl, presetText } from '../electron/presets'
 import {
   normalizeSettings,
@@ -378,14 +384,14 @@ async function main() {
 
   assert.equal(
     parseBridgeError(
-      'Порт 10809 уже занят — похоже, запущена другая копия Happ Bridge. Закройте её или смените порт в настройках.',
+      'Порт 10809 уже занят: похоже, запущена другая копия Happ Bridge. Закройте её или смените порт в настройках.',
     ).kind,
     'port-in-use',
   )
   assert.equal(parseBridgeError('Порт 10809 уже занят').title, 'Порт 10809 занят')
   assert.equal(parseBridgeError('что-то сломалось').kind, 'generic')
   assert.equal(
-    parseBridgeError('Happ требует логин/пароль LAN — укажите их в настройках Bridge.').kind,
+    parseBridgeError('Happ требует логин/пароль LAN. Укажите их в настройках Bridge.').kind,
     'auth',
   )
   assert.notEqual(
@@ -395,10 +401,37 @@ async function main() {
   assert.equal(parseBridgeError('Некорректный IP').kind, 'validation')
   assert.equal(
     parseBridgeError(
-      'Сеть не отмечена как домашняя и пароль LAN не задан — автоподключение отключено. Выберите телефон в списке.',
+      'Сеть не отмечена как домашняя и пароль LAN не задан, поэтому автоподключение отключено. Выберите телефон в списке.',
     ).kind,
     'guidance',
   )
+
+  // macOS unsigned update: path helpers + replace script (no Squirrel/ShipIt).
+  assert.equal(
+    resolveAppBundlePath('/Applications/Happ Bridge.app/Contents/MacOS/Happ Bridge'),
+    '/Applications/Happ Bridge.app',
+  )
+  assert.throws(() => resolveAppBundlePath('/usr/local/bin/happ-bridge'), /Не удалось определить/)
+  {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-upd-'))
+    const nested = path.join(tmp, 'out', APP_BUNDLE_NAME)
+    fs.mkdirSync(nested, { recursive: true })
+    assert.equal(findExtractedApp(path.join(tmp, 'out')), nested)
+    assert.equal(findExtractedApp(tmp), nested)
+    fs.rmSync(tmp, { recursive: true, force: true })
+  }
+  {
+    const script = buildReplaceScript({
+      pid: 4242,
+      zipPath: '/tmp/Happ-Bridge-9.9.9-arm64.zip',
+      appPath: '/Applications/Happ Bridge.app',
+    })
+    assert.match(script, /PID=4242/)
+    assert.match(script, /ditto -x -k/)
+    assert.match(script, /xattr -cr/)
+    assert.match(script, /open "\$APP"/)
+    assert.match(script, /Happ Bridge\.app/)
+  }
 
   assert.equal(isIpv4Family('IPv4'), true)
   assert.equal(isIpv4Family(4), true)
@@ -450,7 +483,7 @@ async function main() {
   )
   assert.deepEqual(livePreferredIps([], ['192.168.1.50']), [])
   // Empty local I/F → nothing matches (nothing routable).
-  assert.deepEqual(livePreferredIps(['192.168.1.5']), [])
+  assert.deepEqual(livePreferredIps(['192.168.1.5'], []), [])
 
   // Netmask-aware discovery: /16 and /23 are honored, not just /24.
   assert.equal(sameNetwork('192.168.7.20', '192.168.5.10', 16), true)

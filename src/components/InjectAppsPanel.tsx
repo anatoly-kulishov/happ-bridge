@@ -9,7 +9,7 @@ import {
   MousePointer2,
   RefreshCcw,
   ShieldAlert,
-} from 'lucide-react'
+} from '../icons'
 import { useEffect, useState } from 'react'
 import type {
   InjectTarget,
@@ -22,7 +22,7 @@ const ALL: InjectTarget[] = ['cursor', 'webstorm', 'firefox']
 
 const targetMeta: Record<
   InjectTarget,
-  { label: string; icon: React.ElementType }
+  { label: string; icon: typeof MousePointer2 }
 > = {
   cursor: { label: 'Cursor', icon: MousePointer2 },
   webstorm: { label: 'WebStorm', icon: Code2 },
@@ -112,7 +112,7 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
             lines.push({ tone: r.ok ? 'ok' : 'err', text: r.message })
           }
         } else {
-          lines.push({ tone: 'info', text: 'Перезапуск отложен — сделайте позже вручную' })
+          lines.push({ tone: 'info', text: 'Перезапуск отложен. Сделайте позже вручную.' })
         }
       }
 
@@ -139,7 +139,7 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
             type="button"
             disabled={busy || refreshing}
             onClick={() => void refresh()}
-            className="icon-btn"
+            className="icon-btn icon-btn-sm"
             title={refreshing ? 'Обновляю статус…' : 'Обновить статус приложений'}
             aria-label="Обновить статус приложений"
           >
@@ -150,13 +150,13 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
       {showHeader && (
         <p className="text-xs leading-relaxed muted">
           Выберите приложения и нажмите «Прописать» (127.0.0.1) или «Откатить»
-          (прямой IP телефона). Автоподмены нет — только вручную.
+          (прямой IP телефона). Автоподмены нет, только вручную.
         </p>
       )}
 
       {!showHeader && (
         <p className="text-xs leading-relaxed muted">
-          Пропишите 127.0.0.1 в приложения — или откатите на IP телефона.
+          Пропишите 127.0.0.1 в приложения или откатите на IP телефона.
         </p>
       )}
 
@@ -171,13 +171,7 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
             <li key={id}>
               <label
                 htmlFor={`inject-${id}`}
-                className={`flex cursor-pointer items-center gap-3 rounded-[10px] border px-3 py-2.5 transition-colors ${
-                  !available
-                    ? 'cursor-not-allowed border-[var(--hb-border)] bg-black/10 opacity-60'
-                    : selected
-                      ? 'border-sky-400/35 bg-sky-500/12'
-                      : 'border-[var(--hb-border)] bg-black/15 hover:bg-[var(--hb-bg-hover)]'
-                }`}
+                className={`row gap-3${!available ? ' opacity-60' : selected ? ' row-active' : ''}${!available ? ' cursor-not-allowed' : ' cursor-pointer'}`}
                 title={info?.detail ?? targetMeta[id].label}
               >
                 <input
@@ -225,7 +219,7 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
                     className="text-xs faint"
                     title={info?.detail ?? shortUnavailable(info?.detail)}
                   >
-                    —
+                    нет
                   </span>
                 )}
               </label>
@@ -242,9 +236,7 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
           title="Прописать 127.0.0.1 в выбранные приложения"
           onClick={() => void run('apply')}
         >
-          <span className="grid w-4 place-items-center" aria-hidden>
-            {busyMode === 'apply' && <Loader2 size={14} className="animate-spin" />}
-          </span>
+          {busyMode === 'apply' && <Loader2 size={14} className="animate-spin" aria-hidden />}
           <span className="whitespace-nowrap">
             {busyMode === 'apply' ? 'Прописываю…' : 'Прописать'}
           </span>
@@ -256,9 +248,7 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
           title="Убрать прописку и вернуть прямой IP телефона"
           onClick={() => void run('revert')}
         >
-          <span className="grid w-4 place-items-center" aria-hidden>
-            {busyMode === 'revert' && <Loader2 size={14} className="animate-spin" />}
-          </span>
+          {busyMode === 'revert' && <Loader2 size={14} className="animate-spin" aria-hidden />}
           <span className="whitespace-nowrap">
             {busyMode === 'revert' ? 'Откатываю…' : 'Откатить'}
           </span>
@@ -266,53 +256,42 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
       </div>
 
       {doc && doc.length > 0 && (
-        <ul className="space-y-1 rounded-[10px] border border-[var(--hb-border)] bg-black/20 px-2.5 py-2">
+        <ul className="stack stack-1 rounded-[10px] border border-[var(--hb-border)] bg-black/20 px-2.5 py-2">
           {doc.map((line, i) => {
             const tone =
               line.tone === 'ok'
-                ? {
-                    label: 'Успешно',
-                    hint: 'Операция выполнена',
-                    Icon: CheckCircle2,
-                    cls: 'bg-[var(--hb-ok-soft)] text-emerald-300',
-                  }
+                ? { label: 'Успешно', hint: 'Операция выполнена', Icon: CheckCircle2, cls: 'log-line-ok' }
                 : line.tone === 'err'
                   ? {
                       label: 'Ошибка',
-                      hint: 'Не удалось выполнить — см. текст справа',
+                      hint: 'Не удалось выполнить. См. текст справа.',
                       Icon: CircleAlert,
-                      cls: 'bg-[var(--hb-danger-soft)] text-red-300',
+                      cls: 'log-line-err',
                     }
                   : line.tone === 'warn'
                     ? {
                         label: 'Внимание',
                         hint: 'Нужно действие с вашей стороны',
                         Icon: AlertTriangle,
-                        cls: 'bg-[var(--hb-warn-soft)] text-amber-300',
+                        cls: 'log-line-warn',
                       }
                     : {
                         label: 'Подсказка',
                         hint: 'Дополнительная информация',
                         Icon: Info,
-                        cls: 'bg-[var(--hb-accent-soft)] text-sky-300',
+                        cls: 'log-line-info',
                       }
             const Glyph = tone.Icon
             return (
               <li
                 key={i}
-                className="flex items-start gap-2.5 rounded-md px-1 py-1 text-xs leading-snug"
+                className={`log-line ${tone.cls}`}
                 title={`${tone.label}: ${line.text}`}
               >
-                <span
-                  className={`mt-px inline-flex size-5 shrink-0 items-center justify-center rounded-full ${tone.cls}`}
-                  title={tone.hint}
-                  aria-label={tone.label}
-                >
+                <span className="log-line-icon" title={tone.hint} aria-label={tone.label}>
                   <Glyph size={12} aria-hidden />
                 </span>
-                <span className="min-w-0 flex-1 break-words text-[var(--hb-text-muted)]">
-                  {line.text}
-                </span>
+                <span className="log-line-text">{line.text}</span>
               </li>
             )
           })}

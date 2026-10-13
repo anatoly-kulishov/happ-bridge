@@ -1,8 +1,10 @@
-import { Loader2, type LucideIcon } from 'lucide-react'
+import { Loader2, type IconProps } from '../icons'
+
+type IconComp = (props: IconProps) => React.ReactNode
 
 type Props = {
   busy: boolean
-  icon: LucideIcon
+  icon: IconComp
   size?: number
   className?: string
 }
@@ -10,7 +12,7 @@ type Props = {
 /** Swap a button icon for a spinner while the action is in flight. */
 export function BusyIcon({ busy, icon: Icon, size = 14, className = '' }: Props) {
   if (busy) {
-    return <Loader2 size={size} className={`animate-spin ${className}`.trim()} aria-hidden />
+    return <Loader2 size={size} className={`animate-spin ${className}`.trim()} />
   }
-  return <Icon size={size} className={className || undefined} aria-hidden />
+  return <Icon size={size} className={className || undefined} />
 }

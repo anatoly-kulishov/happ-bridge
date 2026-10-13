@@ -1,38 +1,24 @@
-import { AlertTriangle, CheckCircle2, CircleAlert, type LucideIcon } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CircleAlert,
+  type IconProps,
+} from '../icons'
 import type { ReactNode } from 'react'
 
 export type AlertTone = 'danger' | 'warning' | 'success'
+
+type IconComp = (props: IconProps) => React.ReactNode
 
 type Props = {
   tone?: AlertTone
   title: string
   children?: ReactNode
   actions?: ReactNode
-  icon?: LucideIcon
+  icon?: IconComp
 }
 
-const toneClass: Record<AlertTone, { box: string; icon: string; title: string; body: string }> = {
-  danger: {
-    box: 'border-red-400/25 bg-[var(--hb-danger-soft)]',
-    icon: 'text-red-300',
-    title: 'text-red-50',
-    body: 'text-red-100/75',
-  },
-  warning: {
-    box: 'border-amber-400/25 bg-[var(--hb-warn-soft)]',
-    icon: 'text-amber-300',
-    title: 'text-amber-50',
-    body: 'text-amber-100/75',
-  },
-  success: {
-    box: 'border-emerald-400/25 bg-[var(--hb-ok-soft)]',
-    icon: 'text-emerald-300',
-    title: 'text-emerald-50',
-    body: 'text-emerald-100/75',
-  },
-}
-
-function defaultIcon(tone: AlertTone): LucideIcon {
+function defaultIcon(tone: AlertTone): IconComp {
   switch (tone) {
     case 'warning':
       return AlertTriangle
@@ -55,7 +41,6 @@ export function AlertBanner({
   actions,
   icon: Icon,
 }: Props) {
-  const t = toneClass[tone]
   const Glyph = Icon ?? defaultIcon(tone)
   const toneHint =
     tone === 'danger'
@@ -64,17 +49,15 @@ export function AlertBanner({
         ? 'Внимание'
         : 'Успешно'
   return (
-    <div className={`rounded-xl border p-3.5 ${t.box}`} role="alert" title={title}>
-      <div className="flex items-start gap-2.5">
-        <span className="mt-0.5 shrink-0" title={toneHint} aria-hidden>
-          <Glyph size={18} className={t.icon} />
+    <div className={`alert alert-${tone}`} role="alert" title={title}>
+      <div className="alert-grid">
+        <span className="alert-icon" title={toneHint} aria-hidden>
+          <Glyph size={18} />
         </span>
-        <div className="min-w-0 flex-1">
-          <p className={`text-sm font-medium tracking-tight ${t.title}`}>{title}</p>
-          {children && (
-            <div className={`mt-1 text-xs leading-relaxed ${t.body}`}>{children}</div>
-          )}
-          {actions && <div className="mt-2.5 flex flex-wrap items-center gap-2">{actions}</div>}
+        <div className="alert-main">
+          <p className="alert-title">{title}</p>
+          {children ? <div className="alert-body">{children}</div> : null}
+          {actions ? <div className="alert-actions">{actions}</div> : null}
         </div>
       </div>
     </div>
@@ -116,7 +99,7 @@ export function parseBridgeError(error: string): ParsedBridgeError {
     return {
       kind: 'port-in-use',
       title: port ? `Порт ${port} занят` : 'Порт прокси занят',
-      body: 'Скорее всего запущена другая копия Happ Bridge (иконка в строке меню или старая сборка). Закройте её через меню → Выход, либо смените порты ниже.',
+      body: 'Скорее всего запущена другая копия Happ Bridge (иконка в строке меню или старая сборка). Закройте её через меню → Выход или смените порты ниже.',
       tone: 'danger',
       port,
     }
@@ -184,10 +167,10 @@ export function parseBridgeError(error: string): ParsedBridgeError {
     }
   }
 
-  if (/другой сети \(VPN/i.test(trimmed) || /Дождитесь подключения VPN/i.test(trimmed)) {
+  if (/другой сети \(VPN/i.test(trimmed) || /Дождитесь.*VPN/i.test(trimmed)) {
     return {
       kind: 'guidance',
-      title: 'Ждём сеть телефона',
+      title: 'Телефон в другой сети',
       body: trimmed,
       tone: 'warning',
     }

@@ -6,7 +6,7 @@ Set Telegram, Cursor, Firefox, and WebStorm to `127.0.0.1` once. When the phone 
 
 [Русский](#happ-bridge-рус) · [English](#happ-bridge-en) · [Download](#install) · [Site](https://anatoly-kulishov.github.io/happ-bridge/) · [Changelog](docs/CHANGELOG.md)
 
-**Текущая версия:** 1.2.9
+**Текущая версия:** 1.3.0
 
 ---
 
@@ -30,18 +30,19 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 - macOS (Apple Silicon) + телефон с Happ и включённым **«Разрешить LAN подключение»**
 - кто устал обновлять прокси в Telegram / Cursor / IDE после смены Wi‑Fi
 
-### Возможности (1.2.9)
+### Возможности (1.3.0)
 
-- **тёмная тема на дизайн-токенах** (`--hb-*`): единая палитра, аккуратные скругления и тени, системные шрифты и `color-scheme: dark`
-- **контраст и анти-скачки**: читабельный мелкий текст, не «убитый» disabled-вид, стабильная вёрстка при загрузке/поиске/прописке
+- **автообновление, которое ставится**: после «Установить» ZIP подменяет `.app` (unsigned-сборка без ShipIt), снимает quarantine и перезапускает
+- **lean packaging**: `.app` ~197 MB, prune Framework locales, Preact + hand CSS, lazy Wizard/Inject/diagnostics
+- **тёмная тема на дизайн-токенах** (`--hb-*`): единая палитра, semantic UI, системные шрифты и `color-scheme: dark`
+- **контраст и анти-скачки**: читабельный мелкий текст, стабильная вёрстка при загрузке/поиске/прописке
 - **защита от потери данных**: при закрытии окна с несохранёнными настройками Happ Bridge спрашивает подтверждение
-- **развёрнутая диагностика подключения** в `main.log`: ошибки и таймауты перенаправления к телефону (с err-кодом), смена target, восстановление после «нестабильной» связи, время и «мусорные» IP скана
+- **развёрнутая диагностика подключения** в `main.log`: ошибки и таймауты к телефону, смена target, восстановление после «нестабильной» связи
 - автопоиск Happ в Wi‑Fi; если телефонов несколько - список и выбор вручную
 - устойчивый поиск после перезагрузки Mac (ожидание Wi‑Fi, мягкий backoff, подсказка Local Network в диагностике)
 - один тумблер **«Мост к Happ»** - включение/отключение без дублирующих кнопок
 - **реальные иконки** установленных Cursor / WebStorm / Firefox в списке прописки
 - прописка SOCKS видит установленные `.app`, даже если конфиг Application Support ещё не создан
-- **автообновление** через GitHub Releases (zip + `latest-mac.yml`)
 - локальный TCP-relay только на `127.0.0.1` (соседи по Wi‑Fi не видят прокси)
 - опциональный **логин/пароль Happ LAN** - проверка при поиске и прописка в приложения
 - пароль LAN в **Keychain**; домашние SSID и peer на сеть; предупреждение в чужой Wi‑Fi без пароля
@@ -98,7 +99,7 @@ npm test
 npm run dist
 ```
 
-Готовый файл: `release/Happ Bridge-1.2.9-arm64.dmg`
+Готовый файл: `release/Happ-Bridge-1.3.0-arm64.dmg`
 
 Разработка: `npm run dev`
 
@@ -151,6 +152,8 @@ Electron · Vite · React · TypeScript · Tailwind
 ## Happ Bridge (EN)
 
 Stable localhost proxy bridge to a phone running Happ on your LAN. Stop editing proxy IPs in Telegram, Cursor, Firefox, and WebStorm every time DHCP moves your phone.
+
+**Version 1.3.0** - auto-update that actually replaces the unsigned `.app` (ZIP apply after quit, no ShipIt), lean packaging (~197 MB), semantic CSS/UI polish, and clearer Russian copy.
 
 **Version 1.2.9** - design-token dark theme (consistent palette, SF Pro Text, `color-scheme: dark`), better contrast & layout stability for loading/search/inject states, dirty-close confirmation, and deeper connection logging (relay target/errors/timeouts with errno, recovery after unstable link, stale preferred-IPs and sweep timing).
 

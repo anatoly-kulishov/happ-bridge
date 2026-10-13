@@ -1,4 +1,4 @@
-import { Check, CirclePlus, History, Loader2, Unplug } from 'lucide-react'
+import { Check, CirclePlus, History, Loader2, Unplug } from '../icons'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
 type Props = {
@@ -90,9 +90,9 @@ export function PeerList({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="stack stack-2">
       {showHeader && (
-        <div className="flex items-center justify-between gap-2">
+        <div className="card-head" style={{ marginBottom: 0 }}>
           <p className="section-label">
             Телефоны в сети
             {peers.length > 0 && (
@@ -106,17 +106,17 @@ export function PeerList({
       {showHeader && peers.length > 1 && (
         <p className="text-xs muted">
           {onDisconnect
-            ? 'Нажмите IP, чтобы подключиться. Активный — чтобы отключить.'
+            ? 'Нажмите IP, чтобы подключиться. Повторный клик по активному отключает.'
             : 'Нажмите IP, чтобы подключиться.'}
         </p>
       )}
 
       {peers.length === 0 ? (
-        <p className="flex min-h-[4.25rem] items-center justify-center rounded-[10px] border border-dashed border-[var(--hb-border-strong)] bg-black/15 px-3 py-3 text-center text-xs leading-snug muted">
+        <p className="empty-state">
           {emptyHint ?? 'Телефонов пока нет. Нажмите обновление, чтобы найти.'}
         </p>
       ) : (
-        <ul className="space-y-1.5" role="listbox" aria-label="Найденные прокси">
+        <ul className="stack stack-1.5" role="listbox" aria-label="Найденные прокси">
           {peers.map((ip, index) => {
             const active = ip === selectedIp
             const loading = picking === ip
@@ -149,28 +149,13 @@ export function PeerList({
                   onFocus={() => setFocusIdx(index)}
                   onKeyDown={(e) => onOptionKeyDown(e, index)}
                   title={rowTitle}
-                  className={`flex w-full items-center gap-2 rounded-[10px] border px-3 py-2.5 text-left text-sm transition-[border-color,background-color,color,transform,opacity] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hb-ring)] active:scale-[0.99] disabled:opacity-50 ${
-                    active
-                      ? 'border-sky-400/40 bg-sky-500/12 text-sky-50'
-                      : 'border-[var(--hb-border)] bg-black/15 text-[var(--hb-text)] hover:border-[var(--hb-border-strong)] hover:bg-[var(--hb-bg-hover)]'
-                  }`}
+                  className={`row${active ? ' row-active' : ''}`}
                 >
-                  <span
-                    className={`flex size-5 shrink-0 items-center justify-center rounded-full border ${
-                      active
-                        ? 'border-sky-300 bg-sky-300 text-zinc-950'
-                        : 'border-[var(--hb-border-strong)] bg-transparent'
-                    }`}
-                    title={active ? 'Выбран' : 'Не выбран'}
-                    aria-hidden
-                  >
+                  <span className="row-check" title={active ? 'Выбран' : 'Не выбран'} aria-hidden>
                     {active && <Check size={12} strokeWidth={2.5} />}
                   </span>
                   <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                    <span
-                      className="truncate font-mono text-[13px] tabular-nums tracking-tight"
-                      title={ip}
-                    >
+                    <span className="truncate mono-sm" title={ip}>
                       {ip}
                     </span>
                     {isFamiliar && (
@@ -185,7 +170,7 @@ export function PeerList({
                   </span>
                   <span
                     className={`inline-flex size-7 shrink-0 items-center justify-center rounded-md ${
-                      active && onDisconnect ? 'text-sky-200/90' : 'muted'
+                      active && onDisconnect ? 'text-sky-200' : 'muted'
                     }`}
                     title={actionLabel}
                     aria-hidden

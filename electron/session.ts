@@ -1,6 +1,6 @@
 import { app, Notification } from 'electron'
-import { log } from './log'
-import { runDiagnostics } from './diagnostics'
+import { log, logDebug } from './log'
+import { BASE_WATCH_MS, NET_POLL_MS, nextIdleDelayMs, watchDelayMs } from './watchPolicy'
 import {
   chooseDiscoveredPeer,
   discoverPhones,
@@ -22,13 +22,11 @@ import {
   publicSettings,
   rememberPhoneIp,
   socksAuthFromSettings,
-} from './types'
-import type {
-  AppSettings,
-  BridgeState,
-  BridgeStatus,
-  DiagnosticCheck,
-  UpdateInfo,
+  type AppSettings,
+  type BridgeState,
+  type BridgeStatus,
+  type DiagnosticCheck,
+  type UpdateInfo,
 } from './types'
 import {
   addHomeSsid,
@@ -53,10 +51,6 @@ type SessionHooks = {
   onFirstConnect?: () => void
 }
 
-const BASE_WATCH_MS = 3000
-const MAX_IDLE_MS = 120_000
-/** Cap backoff while LAN IP is up but phone still missing (TCC / phone waking). */
-const SOFT_IDLE_MS = 15_000
 /** Health-check SOCKS probe; 500ms was too short for sleepy phones. */
 const HEALTH_PROBE_MS = 1_500
 const TRAFFIC_FRESH_MS = 15_000
@@ -81,10 +75,10 @@ function presentError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err)
   if (msg.includes('EADDRINUSE')) {
     const port = /127\.0\.0\.1:(\d+)/.exec(msg)?.[1]
-    return `Порт ${port ?? 'прокси'} уже занят — похоже, запущена другая копия Happ Bridge. Закройте её или смените порт в настройках.`
+    return `Порт ${port ?? 'прокси'} уже занят: похоже, запущена другая копия Happ Bridge. Закройте её или смените порт в настройках.`
   }
   if (msg.includes('EACCES')) {
-    return 'Нет прав на привязку порта — используйте локальный порт выше 1024.'
+    return 'Нет прав на привязку порта. Используйте локальный порт выше 1024.'
   }
   return msg
 }
@@ -478,6 +472,7 @@ export class BridgeSession {
   }
 
   async diagnose(): Promise<BridgeState> {
+    const { runDiagnostics } = await import('./diagnostics')
     this.diagnostics = await runDiagnostics({
       settings: this.settings,
       phoneIp: this.phoneIp,
@@ -494,7 +489,7 @@ export class BridgeSession {
     if (!this.settings.enabled || this.holdOff) return
     const fp = networkFingerprint()
     if (fp === this.lastNetFp) return
-    log('netPoll', 'network changed fp %s → %s', this.lastNetFp, fp)
+    logDebug('netPoll', 'network changed fp %s → %s', this.lastNetFp, fp)
     this.lastNetFp = fp
     this.idleDelayMs = BASE_WATCH_MS
     this.idleFailStreak = 0
@@ -513,7 +508,7 @@ export class BridgeSession {
         socksAuthFromSettings(this.settings),
       )
       if (ok) {
-        log('netPoll', 'phone %s still reachable after fp change — skip reconnect', ip)
+        logDebug('netPoll', 'phone %s still reachable after fp change — skip reconnect', ip)
         if (this.status === 'unstable') {
           this.firstProbeFailAt = null
           this.setStatus('connected')
@@ -531,8 +526,8 @@ export class BridgeSession {
     this.watchAbort = new AbortController()
     this.lastNetFp = networkFingerprint()
     this.idleFailStreak = 0
-    log('watch', 'startWatch fp=%s (poll 3s)', this.lastNetFp)
-    this.netPoll = setInterval(() => this.onNetworkMaybeChanged(), 3000)
+    log('watch', 'startWatch fp=%s (netPoll %dms)', this.lastNetFp, NET_POLL_MS)
+    this.netPoll = setInterval(() => this.onNetworkMaybeChanged(), NET_POLL_MS)
     void this.watchLoop()
   }
 
@@ -563,7 +558,7 @@ export class BridgeSession {
         ...(this.settings.manualIp ? [this.settings.manualIp] : []),
         ...(this.lastKnownPhoneIp ? [this.lastKnownPhoneIp] : []),
       ]
-      log('runConnect', 'reason=startup waiting for IPv4 / phone route… preferred=%o', startupPreferred)
+      logDebug('runConnect', 'reason=startup waiting for IPv4 / phone route… preferred=%o', startupPreferred)
       await waitForPhoneRoute({
         preferredIps: startupPreferred,
         ipv4TimeoutMs: STARTUP_NET_WAIT_MS,
@@ -575,7 +570,7 @@ export class BridgeSession {
     }
 
     await this.refreshWifi()
-    log('runConnect', 'reason=%s wifiSsid=%s localIps=%o manualIp=%s preferred=%o',
+    logDebug('runConnect', 'reason=%s wifiSsid=%s localIps=%o manualIp=%s preferred=%o',
       reason, this.wifiSsid, localIpv4Addresses(), this.settings.manualIp,
       preferredIpsFromSettings(this.settings, this.wifiSsid))
 
@@ -586,7 +581,7 @@ export class BridgeSession {
       const coldProbe = reason === 'startup' || reason === 'network-change'
 
       this.scanProgress = null
-      log('runConnect', 'discovering… scanSubnet auth=%s timeout=%s', Boolean(auth), coldProbe ? COLD_PROBE_MS : 'default')
+      logDebug('runConnect', 'discovering… scanSubnet auth=%s timeout=%s', Boolean(auth), coldProbe ? COLD_PROBE_MS : 'default')
 
       // startup / network-change / watchdog-lost / watchdog-idle: poll the known
       // phone(s) every 2s (catching the moment a sleeping phone's TCP stack wakes)
@@ -615,10 +610,10 @@ export class BridgeSession {
               timeoutMs: coldProbe ? COLD_PROBE_MS : undefined,
               onProgress: (done, total, currentIp) => {
                 this.scanProgress = { done, total, currentIp }
-                if (done % 16 === 0) this.hooks.onChange()
+                if (done === total || done % 32 === 0) this.hooks.onChange()
               },
             })
-      log('runConnect', 'discover DONE reason=%s found=%o scan=%o', reason, found, this.scanProgress)
+      logDebug('runConnect', 'discover DONE reason=%s found=%o scan=%o', reason, found, this.scanProgress)
 
       this.peers = found
 
@@ -631,7 +626,7 @@ export class BridgeSession {
         // the OS suspended it with the screen locked. Give the user an actionable hint.
         if (this.tcpReachableButSilent) {
           this.errorMessage =
-            'Телефон в сети, но Happ не отвечает — вероятно, экран телефона заблокирован или Happ в фоне. Разблокируйте экран и откройте Happ.'
+            'Телефон в сети, но Happ не отвечает. Вероятно, экран заблокирован или Happ в фоне. Разблокируйте экран и откройте Happ.'
           this.hooks.onChange()
         } else if (
           preferredIps.length > 0 &&
@@ -639,7 +634,7 @@ export class BridgeSession {
           localIpv4Addresses().length > 0
         ) {
           this.errorMessage =
-            'Телефон, похоже, в другой сети (VPN?). Дождитесь подключения VPN или нажмите «Найти» после входа — и проверьте, что Happ слушает порт на телефоне.'
+            'Телефон, похоже, в другой сети (VPN?). Дождитесь VPN или нажмите «Найти» после входа и проверьте, что Happ слушает порт на телефоне.'
           this.hooks.onChange()
         } else if (reason === 'user' || reason === 'watchdog-lost' || reason === 'network-change') {
           this.notifyFail(reason)
@@ -670,7 +665,7 @@ export class BridgeSession {
         this.phoneIp = null
         this.setStatus('disconnected')
         this.errorMessage =
-          'Сеть не отмечена как домашняя и пароль LAN не задан — автоподключение отключено. Выберите телефон в списке.'
+          'Сеть не отмечена как домашняя и пароль LAN не задан, поэтому автоподключение отключено. Выберите телефон в списке.'
         this.hooks.onChange()
         return false
       }
@@ -688,7 +683,7 @@ export class BridgeSession {
       })
 
       if (!chosen) {
-        log('runConnect', 'chosen=null found=%o manualIp=%s', found, this.settings.manualIp)
+        logDebug('runConnect', 'chosen=null found=%o manualIp=%s', found, this.settings.manualIp)
         await this.relay.stop()
         this.phoneIp = null
         this.setStatus('disconnected')
@@ -699,14 +694,14 @@ export class BridgeSession {
         this.hooks.onChange()
         return false
       }
-      log('runConnect', 'chosen=%s (found=%o, untrusted=%s)', chosen, found, untrustedNoAuth)
+      logDebug('runConnect', 'chosen=%s (found=%o, untrusted=%s)', chosen, found, untrustedNoAuth)
 
       // The chosen peer may have only just accepted TCP (phone waking); retry the
       // auth handshake a few times so a half-asleep Happ still connects this cycle.
       let authCheck: Awaited<ReturnType<typeof checkProxyAuth>> = 'unreachable'
       for (let attempt = 1; attempt <= SOCKS_WAKE_RETRIES; attempt++) {
         authCheck = await checkProxyAuth(chosen, this.settings.socksPort, 1000, auth)
-        log('runConnect', 'authCheck ip=%s attempt=%d → %s', chosen, attempt, authCheck)
+        logDebug('runConnect', 'authCheck ip=%s attempt=%d → %s', chosen, attempt, authCheck)
         if (authCheck === 'ok') break
         if (attempt < SOCKS_WAKE_RETRIES) await sleep(500, this.discoverAbort?.signal)
       }
@@ -787,7 +782,7 @@ export class BridgeSession {
         auth,
         onProgress: (done, total, currentIp) => {
           this.scanProgress = { done, total, currentIp }
-          if (done % 16 === 0) this.hooks.onChange()
+          if (done === total || done % 32 === 0) this.hooks.onChange()
         },
       })
 
@@ -819,7 +814,7 @@ export class BridgeSession {
               return ip
             }
             this.tcpReachableButSilent = true
-            log('runConnect', 'fast-recovery TCP-up but Happ silent ip=%s', ip)
+            logDebug('runConnect', 'fast-recovery TCP-up but Happ silent ip=%s', ip)
           }
           await sleep(FAST_RECOVERY_POLL_MS, signal)
         }
@@ -851,8 +846,7 @@ export class BridgeSession {
   private async watchLoop(): Promise<void> {
     const signal = this.watchAbort?.signal
     while (!this.disposed) {
-      const wait =
-        this.status === 'disconnected' ? this.idleDelayMs : BASE_WATCH_MS
+      const wait = watchDelayMs(this.status, this.idleDelayMs)
       await sleep(wait, signal)
       if (this.disposed || this.connectInFlight) continue
       if (!this.settings.enabled || this.holdOff) continue
@@ -863,7 +857,7 @@ export class BridgeSession {
       }
 
       if (this.status === 'disconnected') {
-        log('watchLoop', 'tick status=disconnected wait=%d enable=%s holdOff=%s peers=%o manual=%s',
+        logDebug('watchLoop', 'tick status=disconnected wait=%d enable=%s holdOff=%s peers=%o manual=%s',
           wait, this.settings.enabled, this.holdOff, this.peers, this.settings.manualIp)
         if (this.peers.length > 1 && !this.settings.manualIp && !this.settings.lastPhoneIp) {
           continue
@@ -933,11 +927,7 @@ export class BridgeSession {
   /** Soft cap when LAN is up (phone/TCC) so post-reboot retries stay responsive. */
   private bumpIdleBackoff(lanUp = false): void {
     this.idleFailStreak += 1
-    const cap = lanUp ? SOFT_IDLE_MS : MAX_IDLE_MS
-    this.idleDelayMs = Math.min(
-      cap,
-      BASE_WATCH_MS * 2 ** Math.min(this.idleFailStreak, 4),
-    )
+    this.idleDelayMs = nextIdleDelayMs(this.idleFailStreak, lanUp)
   }
 
   private notifyFail(reason: ConnectReason): void {
@@ -946,7 +936,7 @@ export class BridgeSession {
     }
     notify(
       'Телефон не найден',
-      'Проверьте: 1) Wi‑Fi, 2) LAN вкл в Happ, 3) Локальная сеть в настройках Mac для Happ Bridge',
+      'Проверьте: 1) Wi‑Fi, 2) LAN включён в Happ, 3) Локальная сеть в настройках Mac для Happ Bridge',
     )
   }
 
@@ -962,7 +952,7 @@ export class BridgeSession {
     this.announcedFirstConnect = true
     notify(
       'Happ Bridge готов',
-      'Можно закрыть окно — приложение останется в строке меню. Адрес 127.0.0.1 не меняется.',
+      'Окно можно закрыть: приложение останется в строке меню. Адрес 127.0.0.1 не меняется.',
     )
     this.hooks.onFirstConnect?.()
   }
@@ -982,11 +972,11 @@ function notify(title: string, body: string): void {
 function authCheckMessage(check: 'auth-required' | 'auth-failed' | 'unreachable'): string {
   switch (check) {
     case 'auth-required':
-      return 'Happ требует логин/пароль LAN — укажите их в настройках Bridge.'
+      return 'Happ требует логин/пароль LAN. Укажите их в настройках Bridge.'
     case 'auth-failed':
-      return 'Happ отклонил логин/пароль LAN — проверьте данные в настройках.'
+      return 'Happ отклонил логин/пароль LAN. Проверьте данные в настройках.'
     case 'unreachable':
-      return 'Happ не отвечает — проверьте телефон и «Разрешить LAN подключение».'
+      return 'Happ не отвечает. Проверьте телефон и «Разрешить LAN подключение».'
   }
 }
 

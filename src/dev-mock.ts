@@ -204,7 +204,7 @@ export function installDevMock() {
         ...state,
         update: {
           status: 'available',
-          message: 'Версия 1.2.1 скачана — нажмите «Установить».',
+          message: 'Версия 1.2.1 скачана. Нажмите «Установить».',
           version: '1.2.1',
           progress: 100,
         },
@@ -233,7 +233,7 @@ export function installDevMock() {
         results: targets.map((id) => ({
           id,
           ok: true,
-          message: `${id} — прописано`,
+          message: `${id}: прописано`,
         })),
       }
     },
@@ -246,14 +246,14 @@ export function installDevMock() {
         results: targets.map((id) => ({
           id,
           ok: true,
-          message: `${id} — откатлено`,
+          message: `${id}: откачено`,
         })),
       }
     },
     injectRelaunchOffer: async (targets: InjectTarget[]) => {
       return {
         restarted: false,
-        results: targets.map((id) => ({ id, ok: true, message: `${id} — нужен перезапуск` })),
+        results: targets.map((id) => ({ id, ok: true, message: `${id}: нужен перезапуск` })),
       }
     },
     onState: (cb: (s: BridgeState) => void): (() => void) => {

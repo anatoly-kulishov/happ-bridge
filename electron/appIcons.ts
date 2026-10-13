@@ -67,7 +67,8 @@ async function iconFor(bundlePath: string): Promise<string | null> {
           }
           const image = nativeImage.createFromPath(pngPath)
           if (!image.isEmpty()) {
-            result = image.toDataURL()
+            // 32px data-URL — full Retina ICNS was hundreds of KB per app in RAM/IPC.
+            result = image.resize({ width: 32, height: 32 }).toDataURL()
             break
           }
         } finally {

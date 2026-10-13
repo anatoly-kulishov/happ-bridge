@@ -1,4 +1,4 @@
-import { Loader2, RefreshCw, Search, X } from 'lucide-react'
+import { Loader2, RefreshCw, Search, X } from '../icons'
 import { useMemo, useState } from 'react'
 import type { BridgeState } from '../../electron/types'
 import { useBridgeActions } from '../hooks/useBridgeActions'
@@ -67,19 +67,19 @@ export function Wizard({ state, onDone, onDismiss, onState }: Props) {
 
   return (
     <div className="app-shell">
-      <main className="app-scroll px-5">
+      <main className="app-scroll">
         <header className="mb-5">
           <div className="flex items-start justify-between gap-2">
-            <p className="section-label text-sky-300/90">Happ Bridge</p>
+            <p className="text-sm muted">Happ Bridge</p>
             {onDismiss && (
               <button
                 type="button"
-                className="icon-btn"
+                className="icon-btn icon-btn-sm"
                 title="Закрыть мастер"
                 aria-label="Закрыть мастер"
                 onClick={onDismiss}
               >
-                <X size={16} aria-hidden />
+                <X size={14} aria-hidden />
               </button>
             )}
           </div>
@@ -106,20 +106,20 @@ export function Wizard({ state, onDone, onDismiss, onState }: Props) {
           {step === 0 && (
             <div className="space-y-4 text-sm leading-relaxed text-[var(--hb-text-muted)]">
               <p>На телефоне:</p>
-              <ol className="list-decimal space-y-2.5 pl-5 text-[var(--hb-text)]">
+              <ul className="list-disc stack stack-2.5 pl-5 text-[var(--hb-text)]">
                 <li>
                   Откройте приложение <strong className="font-medium">Happ</strong>.
                 </li>
-                <li>Включите VPN / подключение.</li>
+                <li>Включите VPN или подключение в Happ.</li>
                 <li>
                   Включите тумблер{' '}
                   <strong className="font-medium">Разрешить LAN подключение</strong>.
-                  Если есть логин/пароль для LAN — позже укажите их в настройках Bridge.
+                  Если в Happ задан логин/пароль для LAN, укажите их позже в настройках Bridge.
                 </li>
                 <li>Телефон и компьютер должны быть в одной Wi‑Fi сети (или одном VPN).</li>
-              </ol>
+              </ul>
               <p className="surface rounded-[10px] px-3 py-2.5 text-xs muted">
-                Адрес на компьютере не меняется — Happ Bridge сам следит за IP телефона.
+                Адрес на компьютере не меняется: Happ Bridge сам следит за IP телефона.
               </p>
             </div>
           )}
@@ -135,7 +135,7 @@ export function Wizard({ state, onDone, onDismiss, onState }: Props) {
                 compact
               />
               <p className="text-sm muted">
-                Нажмите кнопку — найдём телефоны с Happ в сети. Если их несколько,
+                Нажмите кнопку, чтобы найти телефоны с Happ в сети. Если их несколько,
                 выберите нужный.
               </p>
               {state.status !== 'connected' && (
@@ -146,10 +146,10 @@ export function Wizard({ state, onDone, onDismiss, onState }: Props) {
                       type="text"
                       name="lanUser"
                       value={lanUser}
-                      onChange={(e) => setLanUser(e.target.value)}
+                      onChange={(e) => setLanUser(e.currentTarget.value)}
                       placeholder="если задан в Happ…"
                       autoComplete="off"
-                      spellCheck={false}
+                      spellcheck={false}
                       className="field-input"
                     />
                   </label>
@@ -159,10 +159,10 @@ export function Wizard({ state, onDone, onDismiss, onState }: Props) {
                       type="password"
                       name="lanPassword"
                       value={lanPass}
-                      onChange={(e) => setLanPass(e.target.value)}
+                      onChange={(e) => setLanPass(e.currentTarget.value)}
                       placeholder="если задан в Happ…"
                       autoComplete="off"
-                      spellCheck={false}
+                      spellcheck={false}
                       className="field-input"
                     />
                   </label>
@@ -179,7 +179,7 @@ export function Wizard({ state, onDone, onDismiss, onState }: Props) {
                       <button
                         type="button"
                         disabled={busy}
-                        className="btn-secondary h-8 px-2.5 text-xs"
+                        className="btn-secondary btn-sm"
                         title="Снова поискать телефон в сети"
                         onClick={() => void runFind()}
                       >
@@ -221,7 +221,7 @@ export function Wizard({ state, onDone, onDismiss, onState }: Props) {
               {state.status === 'connected' && (
                 <AlertBanner tone="success" title="Телефон выбран">
                   {state.phoneIp
-                    ? `${state.phoneIp} — можно переходить дальше.`
+                    ? `${state.phoneIp}: можно переходить дальше.`
                     : 'Можно переходить дальше.'}
                 </AlertBanner>
               )}
@@ -267,7 +267,7 @@ export function Wizard({ state, onDone, onDismiss, onState }: Props) {
         </div>
       </main>
 
-      <footer className="app-footer px-5">
+      <footer className="app-footer">
         {step > 0 && step < 2 ? (
           <button
             type="button"
@@ -287,13 +287,12 @@ export function Wizard({ state, onDone, onDismiss, onState }: Props) {
             Закрыть
           </button>
         ) : (
-          <div />
+          <span />
         )}
-        <div className="flex-1" />
         <button
           type="button"
           disabled={primary.disabled}
-          className="btn-primary min-w-[7.5rem]"
+          className="btn-primary"
           title={
             step === 0
               ? 'Перейти к поиску телефона'

@@ -1,6 +1,6 @@
 {
   "name": "happ-bridge",
-  "version": "1.2.9",
+  "version": "1.3.0",
   "description": "macOS menu bar app: stable localhost SOCKS5/HTTP bridge to Happ on your phone. Multi-peer picker, manual inject for Cursor/WebStorm/Firefox.",
   "homepage": "https://anatoly-kulishov.github.io/happ-bridge/",
   "repository": {
@@ -29,8 +29,9 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "rm -rf dist dist-electron && vite build",
     "test": "tsx scripts/selfcheck.ts",
+    "metrics": "tsx scripts/metrics.ts",
     "test:adversarial": "tsx scripts/stress.ts 1",
     "test:stress": "tsx scripts/stress.ts 5",
     "prepare:dmg": "bash scripts/build-ssid.sh && bash scripts/prepare-dmg-installer.sh",
@@ -39,19 +40,13 @@
   },
   "dependencies": {
     "electron-updater": "^6.3.9",
-    "lucide-react": "^1.49.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "preact": "^10.29.8"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.0.0",
     "@types/node": "^22.10.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
-    "tailwindcss": "^4.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
@@ -64,10 +59,18 @@
     "directories": {
       "output": "release"
     },
+    "electronLanguages": [
+      "ru",
+      "en"
+    ],
+    "compression": "maximum",
+    "asar": true,
+    "afterPack": "./scripts/afterPack.cjs",
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
-      "package.json"
+      "package.json",
+      "!**/*.map"
     ],
     "extraResources": [
       {

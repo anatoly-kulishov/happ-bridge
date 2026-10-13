@@ -145,9 +145,9 @@ function cursorInjectInfo(homeDir: string, backups: BackupStore): InjectTargetIn
     detail: safeExists(cursorPath)
       ? cursorPath
       : cursorHasConfig
-        ? 'settings.json ещё нет — создадим при прописке'
+        ? 'settings.json ещё нет, создадим при прописке'
         : cursorHasApp
-          ? 'приложение найдено — конфиг создадим при прописке'
+          ? 'приложение найдено, конфиг создадим при прописке'
           : 'Cursor не установлен',
   }
 }
@@ -167,7 +167,7 @@ function webstormInjectInfo(homeDir: string, backups: BackupStore): InjectTarget
           ? wsPaths[0]
           : `${wsPaths.length} версий: ${wsPaths.map((p) => path.basename(path.dirname(path.dirname(p)))).join(', ')}`
         : wsHasApp
-          ? 'приложение найдено — конфиг создадим при прописке'
+          ? 'приложение найдено, конфиг создадим при прописке'
           : 'WebStorm не установлен',
   }
 }
@@ -194,7 +194,7 @@ function firefoxInjectInfo(homeDir: string, backups: BackupStore): InjectTargetI
       applied: Boolean(backups.firefox),
       path: null,
       detail: ffHasApp
-        ? 'нет доступа к профилю — откройте Системные настройки → Конфиденциальность и безопасность → Полный доступ к диску → включите Happ Bridge, затем перезапустите браузер'
+        ? 'нет доступа к профилю. Откройте Системные настройки → Конфиденциальность и безопасность → Полный доступ к диску → включите Happ Bridge, затем перезапустите браузер'
         : 'Firefox: нет доступа к профилю. Системные настройки → Конфиденциальность и безопасность → Полный доступ к диску → Happ Bridge',
     }
   }
@@ -566,7 +566,7 @@ function applyWebstorm(
         id: 'webstorm',
         ok: false,
         message: hasApp
-          ? 'WebStorm установлен, но не удалось определить версию конфига — откройте IDE один раз'
+          ? 'WebStorm установлен, но не удалось определить версию конфига. Откройте IDE один раз'
           : 'WebStorm не установлен',
       }
     }

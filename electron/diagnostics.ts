@@ -1,6 +1,5 @@
 import { discoverPhones, localIpv4Addresses } from './discover'
 import { checkProxyAuth, type ProxyAuthCheck, type ProxyRelay } from './relay'
-import { injectStatus } from './inject'
 import type { AppSettings, DiagnosticCheck, DiagnosticStatus } from './types'
 import { socksAuthFromSettings } from './types'
 
@@ -111,7 +110,7 @@ export async function runDiagnostics(opts: {
     detail:
       locals.length > 0
         ? `Компьютер в сети: ${locals.join(', ')}`
-        : 'Нет локального IP. Подключите Mac к той же Wi‑Fi сети, что и телефон с Happ. Если Wi‑Fi подключён — подождите 10–15 сек и нажмите «Найти снова» (после перезагрузки Mac сеть определяется не сразу).',
+        : 'Нет локального IP. Подключите Mac к той же Wi‑Fi сети, что и телефон с Happ. Если Wi‑Fi уже подключён, подождите 10–15 сек и нажмите «Найти снова» (после перезагрузки Mac сеть определяется не сразу).',
   })
 
   const candidate =
@@ -151,7 +150,7 @@ export async function runDiagnostics(opts: {
       : locals.length === 0
         ? 'Сначала подключитесь к Wi‑Fi (или VPN, если телефон там).'
         : happ.status === 'ok'
-          ? 'Локальная сеть доступна — Happ отвечает.'
+          ? 'Локальная сеть доступна, Happ отвечает.'
           : 'Когда телефон найден хотя бы раз, здесь появится подсказка при сбоях доступа.',
   })
 
@@ -160,7 +159,7 @@ export async function runDiagnostics(opts: {
     status: 'ok',
     label: 'Пароль LAN',
     detail: auth
-      ? `Логин «${auth.user || '(пусто)'}» задан — подмена без пароля отсекается`
+      ? `Логин «${auth.user || '(пусто)'}» задан: подмена без пароля отсекается`
       : 'Не задан. В Happ можно включить логин/пароль для LAN, затем указать их здесь.',
   })
 
@@ -183,7 +182,8 @@ export async function runDiagnostics(opts: {
         : 'Мост не подключён к телефону.',
   })
 
-  // Inject status
+  // Inject status — dynamic import keeps inject.ts out of cold main chunk.
+  const { injectStatus } = await import('./inject')
   const injectInfos = injectStatus()
   const injected = injectInfos.filter((t) => t.applied)
   const notInjected = injectInfos.filter((t) => t.available && !t.applied)

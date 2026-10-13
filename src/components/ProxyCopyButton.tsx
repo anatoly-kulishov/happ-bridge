@@ -1,4 +1,4 @@
-import { Check, Copy, Ban } from 'lucide-react'
+import { Check, Copy, Ban } from '../icons'
 
 type Props = {
   label: string
@@ -10,7 +10,7 @@ type Props = {
 
 export function ProxyCopyButton({ label, value, copied, onCopy, disabled }: Props) {
   const action = disabled
-    ? 'Мост не подключён — адрес пока не работает'
+    ? 'Мост не подключён, адрес пока не работает'
     : copied
       ? `${label}: скопировано`
       : `Копировать ${label}${value ? ` · ${value}` : ''}`
@@ -21,36 +21,20 @@ export function ProxyCopyButton({ label, value, copied, onCopy, disabled }: Prop
       disabled={disabled}
       aria-label={action}
       title={action}
-      className="group flex w-full items-center gap-3 rounded-[10px] border border-[var(--hb-border)] bg-black/15 px-3 py-2.5 text-left transition-[border-color,background-color,transform,opacity] duration-150 hover:border-[var(--hb-border-strong)] hover:bg-[var(--hb-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hb-ring)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+      className="copy-btn"
     >
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="section-label">{label}</span>
-        <span
-          className={`truncate font-mono text-[13px] tabular-nums tracking-tight ${
-            disabled ? 'faint' : 'text-[var(--hb-text)]'
-          }`}
-        >
-          {disabled ? '—' : value}
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs muted">{label}</span>
+        <span className={`mt-0.5 block truncate mono-sm ${disabled ? 'faint' : ''}`}>
+          {disabled ? 'нет' : value}
         </span>
       </span>
       <span
-        className={`flex size-8 shrink-0 items-center justify-center rounded-[8px] border transition-colors ${
-          disabled
-            ? 'border-[var(--hb-border)] faint'
-            : copied
-              ? 'border-emerald-400/35 bg-[var(--hb-ok-soft)] text-emerald-300'
-              : 'border-[var(--hb-border-strong)] bg-[var(--hb-bg-soft)] text-[var(--hb-text-muted)] group-hover:text-[var(--hb-text)]'
-        }`}
+        className={`copy-btn-icon${disabled ? ' copy-btn-icon-off' : copied ? ' copy-btn-icon-ok' : ''}`}
         title={disabled ? 'Недоступно' : copied ? 'Скопировано' : 'Копировать'}
         aria-hidden
       >
-        {disabled ? (
-          <Ban size={15} />
-        ) : copied ? (
-          <Check size={15} />
-        ) : (
-          <Copy size={15} />
-        )}
+        {disabled ? <Ban size={15} /> : copied ? <Check size={15} /> : <Copy size={15} />}
       </span>
     </button>
   )
