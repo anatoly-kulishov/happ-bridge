@@ -1,5 +1,6 @@
 import { discoverPhones, localIpv4Addresses } from './discover'
-import { checkProxyAuth, type ProxyAuthCheck, type ProxyRelay } from './relay'
+import { checkProxyAuth, probePort, type ProxyAuthCheck, type ProxyRelay } from './relay'
+import type { DiagnosticAction } from './types'
 import type { AppSettings, DiagnosticCheck, DiagnosticStatus } from './types'
 import { socksAuthFromSettings } from './types'
 
@@ -73,7 +74,7 @@ export function relayCheckFromResult(
   if (result === 'auth-required') {
     return {
       status: 'warn',
-      detail: `Порт ${port} слушает, но телефон требует логин/пароль LAN (см. проверку «Пароль LAN»).`,
+      detail: `Порт ${port} слушает, но телефон требует логин/пароль LAN (см. «Happ (SOCKS5)»).`,
     }
   }
   if (result === 'auth-failed') {
@@ -90,37 +91,123 @@ export function relayCheckFromResult(
   }
 }
 
+export function phoneCheckFromResult(
+  tcpOk: boolean,
+  candidate: string | null,
+  port: number,
+): { status: DiagnosticStatus; detail: string; action?: DiagnosticAction } {
+  if (!candidate) {
+    return {
+      status: 'fail',
+      detail: 'Адрес телефона неизвестен. Нажмите «Найти телефон» — мост просканирует подсеть.',
+      action: 'find',
+    }
+  }
+  if (tcpOk) {
+    return {
+      status: 'ok',
+      detail: `TCP ${candidate}:${port} отвечает — телефон в этой сети и порт открыт`,
+    }
+  }
+  return {
+    status: 'fail',
+    detail: `Нет TCP-ответа от ${candidate}:${port}. Телефон в другой сети/VPN, либо Happ не разрешает LAN-подключения.`,
+    action: 'find',
+  }
+}
+
 export async function runDiagnostics(opts: {
   settings: AppSettings
   phoneIp: string | null
   relay: ProxyRelay
-  statusConnected: boolean
   wifiSsid: string | null
   isHomeNetwork: boolean
 }): Promise<DiagnosticCheck[]> {
-  const { settings, phoneIp, relay, statusConnected } = opts
+  const { settings, phoneIp, relay, wifiSsid, isHomeNetwork } = opts
   const locals = localIpv4Addresses()
   const checks: DiagnosticCheck[] = []
   const auth = socksAuthFromSettings(settings)
 
+  // Chain goes from nearest to farthest: local ports → CLI → GUI apps →
+  // network → phone TCP → Happ SOCKS5 → end-to-end. A failure early in the
+  // chain explains the ones after it, so each detail says what to do next.
+
+  // 1. Local ports — CLIs/apps point here; down ⇒ ECONNREFUSED everywhere.
+  const listening = relay.isListening()
   checks.push({
-    id: 'wifi',
-    status: locals.length > 0 ? 'ok' : 'fail',
-    label: 'Wi‑Fi / локальная сеть',
-    detail:
-      locals.length > 0
-        ? `Компьютер в сети: ${locals.join(', ')}`
-        : 'Нет локального IP. Подключите Mac к той же Wi‑Fi сети, что и телефон с Happ. Если Wi‑Fi уже подключён, подождите 10–15 сек и нажмите «Найти снова» (после перезагрузки Mac сеть определяется не сразу).',
+    id: 'ports',
+    status: listening ? 'ok' : 'fail',
+    label: 'Локальные порты',
+    detail: listening
+      ? `SOCKS 127.0.0.1:${settings.socksPort} · HTTP 127.0.0.1:${settings.httpPort} слушают`
+      : 'Порты не слушают — терминал и приложения с прокси на 127.0.0.1 получат отказ. Перезапустите Happ Bridge.',
+    action: listening ? undefined : 'retry',
   })
 
+  // 2/3. Injection registry (dynamic import keeps inject.ts out of cold chunk).
+  const { injectStatus } = await import('./inject')
+  const infos = injectStatus()
+  const cli = infos.find((t) => t.id === 'codex')
+  if (cli) {
+    checks.push({
+      id: 'cli',
+      status: cli.applied ? 'ok' : 'warn',
+      label: 'CLI / Терминал',
+      detail: cli.applied
+        ? `Прописан в ~/.bash_profile: новые терминалы и OpenCode ходят через мост (socks5://127.0.0.1:${settings.socksPort})`
+        : 'Не прописан — терминалы ходят напрямую. В карточке «CLI / Терминал» нажмите «Прописать», затем откройте новый терминал.',
+    })
+  }
+
+  const guiApps = infos.filter((t) => t.id !== 'codex')
+  const applied = guiApps.filter((t) => t.applied)
+  const notApplied = guiApps.filter((t) => t.available && !t.applied)
+  checks.push({
+    id: 'apps',
+    status: applied.length > 0 ? 'ok' : 'warn',
+    label: 'Приложения',
+    detail:
+      applied.length > 0
+        ? `Прописано: ${applied.map((t) => t.label).join(', ')}${
+            notApplied.length > 0 ? ` · не прописано: ${notApplied.map((t) => t.label).join(', ')}` : ''
+          }`
+        : 'Не прописано ни одно приложение. В карточке «Приложения» нажмите «Прописать» у нужного — иначе оно ходит напрямую.',
+  })
+
+  // 4. Network — no local IP means nothing further can work.
+  const netParts = locals.length > 0 ? [`Mac в сети: ${locals.join(', ')}`] : []
+  if (wifiSsid) netParts.push(`Wi‑Fi: ${wifiSsid}`)
+  if (locals.length > 0) netParts.push(isHomeNetwork ? 'домашняя сеть' : 'сеть не отмечена домашней')
+  checks.push({
+    id: 'network',
+    status: locals.length > 0 ? 'ok' : 'fail',
+    label: 'Wi‑Fi / сеть',
+    detail:
+      locals.length > 0
+        ? netParts.join(' · ')
+        : 'Нет локального IP. Подключите Mac к той же сети, что и телефон (или к VPN, где он), подождите 10–15 сек и нажмите «Повторить».',
+    action: locals.length > 0 ? undefined : 'retry',
+  })
+
+  // 5. Phone TCP — separates "not in this network" from "Happ is silent".
   const candidate =
     settings.manualIp || phoneIp || settings.lastPhoneIp || settings.recentPhoneIps[0] || null
+  const tcpOk = candidate
+    ? await probePort(candidate, settings.socksPort, 1_000)
+    : false
+  const phone = phoneCheckFromResult(tcpOk, candidate, settings.socksPort)
+  checks.push({
+    id: 'phone',
+    status: phone.status,
+    label: 'Телефон (TCP)',
+    detail: phone.detail,
+    action: phone.action,
+  })
 
-  const happResult: ProxyAuthCheck | null = candidate
-    ? await checkProxyAuth(candidate, settings.socksPort, AUTH_PROBE_MS, auth)
-    : null
-
+  // 6. Happ SOCKS5 — TCP up but no SOCKS reply ⇒ app asleep/locked.
   let scanHits: string[] = []
+  const happResult: ProxyAuthCheck | null =
+    candidate && tcpOk ? await checkProxyAuth(candidate, settings.socksPort, AUTH_PROBE_MS, auth) : null
   if (happResult === 'unreachable' && locals.length > 0) {
     scanHits = await discoverPhones({
       socksPort: settings.socksPort,
@@ -133,68 +220,42 @@ export async function runDiagnostics(opts: {
   }
 
   const happ = happCheckFromResult(happResult, candidate, settings.socksPort, auth, scanHits)
-  checks.push({ id: 'happ', status: happ.status, label: 'Happ на телефоне', detail: happ.detail })
+  const happAsleep = Boolean(candidate) && tcpOk && happResult === 'unreachable'
+  if (candidate && !tcpOk) {
+    // Root cause is one line up — do not repeat it as a second red row.
+    checks.push({
+      id: 'happ',
+      status: 'warn',
+      label: 'Happ (SOCKS5)',
+      detail: 'Проверка не запускалась: телефон не отвечает по TCP (см. строку «Телефон (TCP)» выше).',
+    })
+  } else {
+    checks.push({
+      id: 'happ',
+      status: happ.status,
+      label: 'Happ (SOCKS5)',
+      detail: happAsleep
+        ? `Телефон отвечает по TCP, но Happ молчит на ${candidate}:${settings.socksPort}. Обычно он спит: разблокируйте телефон, откройте Happ и нажмите «Повторить».`
+        : happ.detail,
+      action: happ.status === 'fail' ? 'retry' : undefined,
+    })
+  }
 
-  const lanUpButUnreachable = locals.length > 0 && Boolean(candidate) && happ.status === 'fail'
-  checks.push({
-    id: 'local-network',
-    status: !lanUpButUnreachable ? 'ok' : 'fail',
-    label: 'Доступ к локальной сети',
-    detail: lanUpButUnreachable
-      ? 'Есть локальный IP, но телефон не отвечает. Проверьте:\n' +
-        '1) В Happ на телефоне: «Разрешить LAN подключение» и что порт слушает\n' +
-        '2) На Mac: Системные настройки → Конфиденциальность и безопасность → ' +
-        'Локальная сеть → Happ Bridge включён\n' +
-        '3) Если телефон через OpenVPN/VPN: Mac в том же VPN, на сервере client-to-client, ' +
-        'актуальный VPN-IP телефона (после reconnect мог смениться)'
-      : locals.length === 0
-        ? 'Сначала подключитесь к Wi‑Fi (или VPN, если телефон там).'
-        : happ.status === 'ok'
-          ? 'Локальная сеть доступна, Happ отвечает.'
-          : 'Когда телефон найден хотя бы раз, здесь появится подсказка при сбоях доступа.',
-  })
-
-  checks.push({
-    id: 'auth',
-    status: 'ok',
-    label: 'Пароль LAN',
-    detail: auth
-      ? `Логин «${auth.user || '(пусто)'}» задан: подмена без пароля отсекается`
-      : 'Не задан. В Happ можно включить логин/пароль для LAN, затем указать их здесь.',
-  })
-
-  const listening = relay.isListening()
+  // 7. End-to-end through the local port — proves the whole chain.
   const relayResult: ProxyAuthCheck | null =
-    listening && Boolean(relay.targetIp)
+    listening && relay.targetIp
       ? await checkProxyAuth('127.0.0.1', settings.socksPort, RELAY_PROBE_MS, auth)
       : null
-
   const relayChk = relayCheckFromResult(relayResult, settings.socksPort, happ.status === 'ok', listening)
-  checks.push({ id: 'relay', status: relayChk.status, label: 'Локальный мост', detail: relayChk.detail })
-
   checks.push({
-    id: 'bridge',
-    status: statusConnected && Boolean(phoneIp) ? 'ok' : 'fail',
-    label: 'Статус моста',
+    id: 'relay',
+    status: listening && !relay.targetIp ? 'warn' : relayChk.status,
+    label: 'Сквозная проверка',
     detail:
-      statusConnected && phoneIp
-        ? `Подключено к ${phoneIp}`
-        : 'Мост не подключён к телефону.',
-  })
-
-  // Inject status — dynamic import keeps inject.ts out of cold main chunk.
-  const { injectStatus } = await import('./inject')
-  const injectInfos = injectStatus()
-  const injected = injectInfos.filter((t) => t.applied)
-  const notInjected = injectInfos.filter((t) => t.available && !t.applied)
-  const injectParts: string[] = []
-  if (injected.length > 0) injectParts.push(`прописано: ${injected.map((t) => t.label).join(', ')}`)
-  if (notInjected.length > 0) injectParts.push(`не прописано: ${notInjected.map((t) => t.label).join(', ')}`)
-  checks.push({
-    id: 'inject',
-    status: injected.length > 0 ? 'ok' : 'warn',
-    label: 'Прописка в приложения',
-    detail: injectParts.length > 0 ? injectParts.join(' · ') : 'нет доступных приложений',
+      listening && !relay.targetIp
+        ? 'Телефон не подключён — порт работает в режиме fail-open: трафик приложений идёт напрямую через Mac, а не через телефон.'
+        : relayChk.detail,
+    action: relayChk.status === 'fail' && listening ? 'retry' : undefined,
   })
 
   return checks

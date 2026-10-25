@@ -18,7 +18,7 @@ import type {
 import type { BridgeState } from '../../electron/types'
 import { BusyIcon } from './BusyIcon'
 
-const ALL: InjectTarget[] = ['cursor', 'webstorm', 'firefox']
+const ALL: InjectTarget[] = ['cursor', 'webstorm', 'firefox', 'codex']
 
 const targetMeta: Record<
   InjectTarget,
@@ -27,6 +27,7 @@ const targetMeta: Record<
   cursor: { label: 'Cursor', icon: MousePointer2 },
   webstorm: { label: 'WebStorm', icon: Code2 },
   firefox: { label: 'Firefox', icon: AppWindow },
+  codex: { label: 'CLI / Терминал', icon: Code2 },
 }
 
 /** Short status when the target cannot be selected. */
@@ -104,7 +105,11 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
         text: r.message,
       }))
 
-      const okIds = result.results.filter((r) => r.ok).map((r) => r.id)
+      const okIds = result.results
+        .filter((r) => r.ok)
+        .map((r) => r.id)
+        // Codex is a CLI — env proxy needs a fresh shell, never a GUI relaunch.
+        .filter((id) => id !== 'codex')
       if (okIds.length > 0) {
         const offer = await window.happBridge.injectRelaunchOffer(okIds)
         if (offer.restarted) {
@@ -194,7 +199,7 @@ export function InjectAppsPanel({ onState, showHeader = true }: Props) {
                   <Icon size={18} className="shrink-0 muted" aria-hidden />
                 )}
                 <span className="min-w-0 flex-1 truncate text-sm text-[var(--hb-text)]">
-                  {targetMeta[id].label}
+                  {info?.label ?? targetMeta[id].label}
                 </span>
                 {applied && (
                   <span

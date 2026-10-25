@@ -2,6 +2,7 @@
  * Self-check without Electron. Run: npm test
  */
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
@@ -30,6 +31,8 @@ import {
   waitForPhoneRoute,
 } from '../electron/discover'
 import {
+  ALL_APPS,
+  INJECT_APPS,
   applyInject,
   buildWebstormXml,
   injectStatus,
@@ -38,12 +41,15 @@ import {
   readBundleShortVersionSync,
   restoreCursorSettings,
   revertInject,
+  stripCodexBlock,
   stripFirefoxBlock,
+  upsertCodexBlock,
   upsertFirefoxBlock,
   webstormProxyPathsFromBundles,
 } from '../electron/inject'
+import type { InjectTarget } from '../electron/inject'
 import { ProxyRelay, probePort, probeSocks5 } from '../electron/relay'
-import { happCheckFromResult, relayCheckFromResult } from '../electron/diagnostics'
+import { happCheckFromResult, phoneCheckFromResult, relayCheckFromResult } from '../electron/diagnostics'
 import {
   APP_BUNDLE_NAME,
   buildReplaceScript,
@@ -162,6 +168,29 @@ async function main() {
     const r = relayCheckFromResult(null, 10808, true, false)
     assert.equal(r.status, 'fail')
     assert.match(r.detail, /не запущен/)
+  }
+
+  // phone TCP: no address → fail + «Найти телефон»
+  {
+    const r = phoneCheckFromResult(false, null, 10808)
+    assert.equal(r.status, 'fail')
+    assert.equal(r.action, 'find')
+    assert.match(r.detail, /Найти телефон/)
+  }
+  // phone TCP: silent address → fail + find action, actionable text
+  {
+    const r = phoneCheckFromResult(false, '192.168.1.5', 10808)
+    assert.equal(r.status, 'fail')
+    assert.equal(r.action, 'find')
+    assert.match(r.detail, /192\.168\.1\.5:10808/)
+    assert.match(r.detail, /LAN/)
+  }
+  // phone TCP: reachable → ok, no action button
+  {
+    const r = phoneCheckFromResult(true, '192.168.1.5', 10808)
+    assert.equal(r.status, 'ok')
+    assert.equal(r.action, undefined)
+    assert.match(r.detail, /отвечает/)
   }
 
   // --- settings normalization ---
@@ -294,10 +323,6 @@ async function main() {
     shouldWarnPublicNoAuth({ ssid: 'Cafe', homeSsids: [], hasAuth: false }),
     true,
   )
-  assert.ok(presetText('telegram', 10808, 10809).includes('SOCKS5'))
-  assert.ok(
-    presetText('telegram', 10808, 10809, { user: 'u', pass: 'p' }).includes('Логин: u'),
-  )
   assert.equal(
     httpProxyUrl('127.0.0.1', 10809, { user: 'a@b', pass: 'x y' }),
     'http://a%40b:x%20y@127.0.0.1:10809',
@@ -405,6 +430,11 @@ async function main() {
     ).kind,
     'guidance',
   )
+  const wakeMsg =
+    'Телефон 10.98.147.205 в сети, но Happ не отвечает. Разблокируйте экран и откройте Happ.'
+  assert.equal(parseBridgeError(wakeMsg).kind, 'wake-phone')
+  assert.equal(parseBridgeError(wakeMsg).title, 'Happ не отвечает на телефоне')
+  assert.equal(parseBridgeError(wakeMsg).tone, 'warning')
 
   // macOS unsigned update: path helpers + replace script (no Squirrel/ShipIt).
   assert.equal(
@@ -568,6 +598,128 @@ async function main() {
     const elapsed = Date.now() - started
     await r.stop()
     assert.ok(elapsed < 7_000, `expected fail-fast connect, got ${elapsed}ms`)
+  }
+
+  // Fail-open: phone target gone ⇒ local port serves SOCKS5 directly over
+  // the Mac's own uplink, so clients (CLIs, system proxy) keep working.
+  {
+    const [socks, http] = await freePorts(2)
+    const originSockets = new Set<net.Socket>()
+    const origin = net.createServer((s) => {
+      originSockets.add(s)
+      s.on('close', () => originSockets.delete(s))
+      s.end('hello-direct')
+    })
+    await new Promise<void>((resolve, reject) => {
+      origin.once('error', reject)
+      origin.listen(0, '127.0.0.1', () => resolve())
+    })
+    const oport = (origin.address() as { port: number }).port
+
+    const r = new ProxyRelay({ socksPort: socks, httpPort: http })
+    await r.start('127.0.0.1')
+    r.setPhoneIp(null) // no target ⇒ fail-open mode
+
+    const handshake = (offerAuth: boolean) =>
+      new Promise<Buffer>((resolve, reject) => {
+        const c = net.connect({ host: '127.0.0.1', port: socks })
+        let buf = Buffer.alloc(0)
+        let stage: 'greet' | 'auth' | 'sent' = 'greet'
+        const timer = setTimeout(() => reject(new Error('fail-open handshake timed out')), 3_000)
+        const host = '127.0.0.1'
+        const connectReq = Buffer.concat([
+          Buffer.from([0x05, 0x01, 0x00, 0x03, host.length]),
+          Buffer.from(host, 'utf8'),
+          Buffer.from([(oport >> 8) & 0xff, oport & 0xff]),
+        ])
+        c.on('error', (e) => {
+          clearTimeout(timer)
+          reject(e)
+        })
+        c.write(offerAuth ? Buffer.from([0x05, 0x01, 0x02]) : Buffer.from([0x05, 0x01, 0x00]))
+        c.on('data', (chunk) => {
+          buf = Buffer.concat([buf, chunk])
+          if (stage === 'greet') {
+            if (buf.length < 2) return
+            const want = offerAuth ? 0x02 : 0x00
+            if (buf[0] !== 0x05 || buf[1] !== want) {
+              clearTimeout(timer)
+              c.destroy()
+              reject(new Error(`bad greeting reply: ${[...buf.subarray(0, 2)]}`))
+              return
+            }
+            buf = Buffer.alloc(0)
+            if (want === 0x02) {
+              stage = 'auth'
+              c.write(Buffer.from([0x01, 1, 0x75, 1, 0x70])) // user "u", pass "p"
+            } else {
+              stage = 'sent'
+              c.write(connectReq)
+            }
+            return
+          }
+          if (stage === 'auth') {
+            if (buf.length < 2) return
+            if (buf[1] !== 0x00) {
+              clearTimeout(timer)
+              c.destroy()
+              reject(new Error('fail-open must accept any credentials'))
+              return
+            }
+            buf = Buffer.alloc(0)
+            stage = 'sent'
+            c.write(connectReq)
+            return
+          }
+        })
+        c.on('close', () => {
+          clearTimeout(timer)
+          resolve(buf)
+        })
+      })
+
+    for (const offerAuth of [false, true]) {
+      const all = await handshake(offerAuth)
+      assert.ok(all.length >= 9 && all[1] === 0x00, 'CONNECT reply must be OK (code 0)')
+      assert.ok(all.subarray(9).toString('utf8').includes('hello-direct'),
+        'fail-open must dial the destination directly')
+    }
+
+    // HTTP-proxy CONNECT (native apps such as ChatGPT.app talk this to the
+    // system SOCKS port) must tunnel too.
+    {
+      const c = net.connect({ host: '127.0.0.1', port: socks })
+      c.write(
+        `CONNECT 127.0.0.1:${oport} HTTP/1.1\r\nHost: 127.0.0.1:${oport}\r\n\r\n`,
+      )
+      const all = await new Promise<Buffer>((resolve, reject) => {
+        let acc = Buffer.alloc(0)
+        let requested = false
+        const timer = setTimeout(() => reject(new Error('fail-open HTTP CONNECT timed out')), 3_000)
+        c.on('error', (e) => {
+          clearTimeout(timer)
+          reject(e)
+        })
+        c.on('data', (chunk) => {
+          acc = Buffer.concat([acc, chunk])
+          if (requested || acc.length < 9) return // wait for the 200 header first
+          requested = true
+          c.write(`GET / HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n`)
+        })
+        c.on('close', () => {
+          clearTimeout(timer)
+          resolve(acc)
+        })
+      })
+      const head = all.subarray(0, all.indexOf('\r\n\r\n') + 4).toString('utf8')
+      assert.ok(head.startsWith('HTTP/1.1 200 Connection established'),
+        `HTTP CONNECT must get 200, got: ${head}`)
+      assert.ok(all.toString('utf8').includes('hello-direct'), 'HTTP CONNECT tunnel must carry data')
+    }
+
+    await r.stop()
+    for (const s of originSockets) s.destroy()
+    await new Promise<void>((res) => origin.close(() => res()))
   }
 
   const merged = mergeCursorSettings(
@@ -887,7 +1039,121 @@ async function main() {
     }
   }
 
-  // AbortSignal: one listener for many concurrent probes (no MaxListenersExceeded)
+  // CLI / Терминал: env-блок в shell-rc. Полный round-trip apply → revert
+  // (детерминированный: бинарник codex не требуется, apply создаёт файл сам)
+  // + чистые функции upsert/strip.
+  {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-inject-cli-'))
+    try {
+      const bashProfile = path.join(home, '.bash_profile')
+      fs.writeFileSync(bashProfile, 'export EDITOR=vi\n')
+      const backupPath = path.join(home, 'backups.json')
+      const ports = { socksPort: 10808, httpPort: 10809 }
+
+      const applied = applyInject(['codex'], ports, home, backupPath)
+      const a = applied.results[0] as { ok: boolean; message: string } | undefined
+      assert.equal(a?.ok, true, a?.message ?? 'apply failed')
+      const written = fs.readFileSync(bashProfile, 'utf8')
+      assert.ok(written.includes('BEGIN happ-bridge managed'))
+      assert.ok(written.includes("ALL_PROXY='socks5://127.0.0.1:10808'"))
+      assert.ok(written.includes("NO_PROXY='localhost,127.0.0.1'"))
+      assert.ok(written.includes('export EDITOR=vi'), 'unrelated line must stay')
+
+      const reverted = revertInject(['codex'], ports, home, backupPath)
+      const r = reverted.results[0] as { ok: boolean; message: string } | undefined
+      assert.equal(r?.ok, true, r?.message ?? 'revert failed')
+      assert.equal(fs.readFileSync(bashProfile, 'utf8'), 'export EDITOR=vi\n')
+
+      // Файла не было → revert удаляет созданный
+      const freshHome = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-inject-cli2-'))
+      try {
+        const noFile = applyInject(['codex'], ports, freshHome, path.join(freshHome, 'b.json'))
+        assert.equal(
+          (noFile.results[0] as { ok: boolean }).ok,
+          true,
+          'apply must create missing rc file',
+        )
+        const noFileRevert = revertInject(['codex'], ports, freshHome, path.join(freshHome, 'b.json'))
+        assert.equal(
+          (noFileRevert.results[0] as { ok: boolean }).ok,
+          true,
+        )
+        assert.equal(fs.existsSync(path.join(freshHome, '.bash_profile')), false)
+      } finally {
+        fs.rmSync(freshHome, { recursive: true, force: true })
+      }
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  }
+  {
+    const ports = { socksPort: 10808, httpPort: 10809 }
+    const original = 'export EDITOR=vi\n'
+
+    const upserted = upsertCodexBlock(original, ports)
+    assert.ok(upserted.includes('BEGIN happ-bridge managed'))
+    assert.ok(upserted.includes("ALL_PROXY='socks5://127.0.0.1:10808'"))
+    assert.ok(
+      upserted.includes(`if (exec 3<>/dev/tcp/127.0.0.1/${ports.socksPort}) 2>/dev/null; then`),
+      'прокси включается только при живом порте — CLI не получает мёртвый адрес',
+    )
+    assert.ok(upserted.includes('\nfi\n'), 'блок закрыт fi')
+    assert.ok(upserted.includes("NO_PROXY='localhost,127.0.0.1'"))
+    assert.ok(upserted.includes('export EDITOR=vi'), 'unrelated line must stay')
+
+    // Идемпотентность: повторный upsert не дублирует блок
+    assert.equal(upsertCodexBlock(upserted, ports), upserted, 'upsert must be idempotent')
+
+    // Strip возвращает оригинал
+    assert.equal(stripCodexBlock(upserted), original, 'strip must restore original')
+
+    // Пустой файл: round-trip только блока
+    const empty = upsertCodexBlock('', ports)
+    assert.ok(empty.startsWith('#'))
+    assert.equal(stripCodexBlock(empty), '')
+
+    // Без блока — контент не трогается
+    assert.equal(stripCodexBlock(original), original)
+
+    // С авторизацией: креды попадают в URL
+    const authed = upsertCodexBlock(original, {
+      socksPort: 10808,
+      httpPort: 10809,
+      proxyUser: 'u',
+      proxyPassword: 'p',
+    })
+    assert.ok(authed.includes("ALL_PROXY='socks5://u:p@127.0.0.1:10808'"))
+    assert.equal(stripCodexBlock(authed), original)
+  }
+
+  // Guard: прокси реально включается только пока порт слушает (иначе CLI
+  // получал бы мёртвый адрес — это и ломало codex после выхода из моста).
+  {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-guard-'))
+    const rc = path.join(dir, 'rc')
+    const [port] = await freePorts(1)
+    fs.writeFileSync(rc, upsertCodexBlock('', { socksPort: port, httpPort: port + 1 }), 'utf8')
+
+    const readEnv = (): string =>
+      execFileSync('bash', ['-c', '. "$1"; printf %s "${ALL_PROXY:-none}"', '_', rc], {
+        encoding: 'utf8',
+      })
+
+    assert.equal(readEnv(), 'none', 'порт закрыт ⇒ прокси не экспортируется')
+
+    const srv = net.createServer((s) => s.end())
+    await new Promise<void>((resolve) => srv.listen(port, '127.0.0.1', () => resolve()))
+    try {
+      assert.equal(
+        readEnv(),
+        `socks5://127.0.0.1:${port}`,
+        'порт слушает ⇒ прокси экспортируется',
+      )
+    } finally {
+      await new Promise<void>((resolve) => srv.close(() => resolve()))
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  }
   {
     const warnings: string[] = []
     const onWarn = (w: Error) => warnings.push(String(w))
@@ -906,6 +1172,35 @@ async function main() {
       0,
       warnings.join('\n'),
     )
+  }
+
+  // Реестр приложений: инварианты
+  {
+    // Каждый id в InjectTarget зарегистрирован ровно один раз, и наоборот.
+    assert.deepEqual(
+      ALL_APPS.map((a) => a.id).sort(),
+      (Object.keys(INJECT_APPS) as InjectTarget[]).sort(),
+    )
+    const known: InjectTarget[] = ['cursor', 'webstorm', 'firefox', 'codex']
+    assert.deepEqual(
+      ALL_APPS.map((a) => a.id).sort(),
+      known.slice().sort(),
+      'реестр покрывает все InjectTarget',
+    )
+
+    // label совпадает с object-меткой панели (см. InjectAppsPanel targetMeta)
+    assert.equal(INJECT_APPS.codex.label, 'CLI / Терминал')
+    assert.equal(INJECT_APPS.cursor.label, 'Cursor')
+
+    // Только CLI не подлежит перезапуску GUI.
+    for (const app of ALL_APPS) {
+      const isCli = app.id === 'codex'
+      assert.equal(
+        app.relaunchable,
+        !isCli,
+        `${app.id}: relaunchable признак CLI неверен`,
+      )
+    }
   }
 
   console.log('selfcheck ok')

@@ -1,4 +1,4 @@
-export type CopyPreset = 'socks' | 'http' | 'telegram' | 'cursor'
+export type CopyPreset = 'socks' | 'http'
 
 export type PresetAuth = { user: string; pass: string } | null | undefined
 
@@ -40,25 +40,6 @@ export function presetText(
       return auth
         ? socksProxyUrl('127.0.0.1', socksPort, auth)
         : `127.0.0.1:${socksPort}`
-    case 'telegram':
-      return [
-        'Telegram → Настройки → Данные и память → Прокси → Добавить прокси',
-        'Тип: SOCKS5',
-        'Сервер: 127.0.0.1',
-        `Порт: ${socksPort}`,
-        auth
-          ? `Логин: ${auth.user}\nПароль: ${auth.pass}`
-          : 'Логин / пароль: пусто (или как в Happ LAN)',
-      ].join('\n')
-    case 'cursor':
-      return [
-        'Cursor / VS Code → Settings → http.proxy',
-        `URL: ${socksProxyUrl('127.0.0.1', socksPort, auth)}`,
-        '',
-        'WebStorm / Firefox / Telegram: SOCKS5 127.0.0.1',
-        `Port: ${socksPort}`,
-        ...(auth ? [`Логин: ${auth.user}`, `Пароль: ${auth.pass}`] : []),
-      ].join('\n')
     default: {
       const _exhaustive: never = kind
       return _exhaustive

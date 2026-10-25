@@ -48,11 +48,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 export type DiagnosticStatus = 'ok' | 'warn' | 'fail'
 
+/** Optional UI action a failed check can offer (button in the list). */
+export type DiagnosticAction = 'retry' | 'find'
+
 export type DiagnosticCheck = {
   id: string
   status: DiagnosticStatus
   label: string
   detail: string
+  action?: DiagnosticAction
 }
 
 export type UpdateInfo = {

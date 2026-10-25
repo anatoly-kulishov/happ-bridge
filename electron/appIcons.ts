@@ -4,12 +4,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
-import {
-  cursorAppBundles,
-  firefoxAppBundles,
-  webstormAppBundles,
-} from './appPaths'
 import type { InjectTarget } from './inject'
+import { ALL_APPS } from './inject'
 
 /** Real .app icons for inject targets; missing id ⇒ renderer falls back to a generic icon. */
 export type InjectIconMap = Partial<Record<InjectTarget, string>>
@@ -85,18 +81,14 @@ async function iconFor(bundlePath: string): Promise<string | null> {
 
 /** Resolve real macOS bundle icons (data URLs) for the inject target list. */
 export async function resolveInjectIcons(): Promise<InjectIconMap> {
-  const bundles: Record<InjectTarget, string[]> = {
-    cursor: cursorAppBundles(),
-    webstorm: webstormAppBundles(),
-    firefox: firefoxAppBundles(),
-  }
   const out: InjectIconMap = {}
   await Promise.all(
-    (Object.keys(bundles) as InjectTarget[]).map(async (id) => {
-      for (const bundle of bundles[id]) {
+    ALL_APPS.map(async (app) => {
+      if (!app.bundles) return // CLI — no macOS bundle; UI falls back to a generic icon.
+      for (const bundle of app.bundles(os.homedir())) {
         const icon = await iconFor(bundle)
         if (icon) {
-          out[id] = icon
+          out[app.id] = icon
           return
         }
       }

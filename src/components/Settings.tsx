@@ -14,6 +14,8 @@ import {
   Sparkles,
   Wifi,
   Wrench,
+  Search,
+  Ban,
 } from '../icons'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import type { BridgeState, DiagnosticCheck, UpdateInfo } from '../../electron/types'
@@ -37,11 +39,6 @@ type Props = {
   onShowWizard: () => void
 }
 
-const PRESETS: { id: 'telegram' | 'cursor'; label: string; proto: string }[] = [
-  { id: 'telegram', label: 'Telegram', proto: 'SOCKS5' },
-  { id: 'cursor', label: 'Cursor / IDE', proto: 'HTTP' },
-]
-
 export function Settings({ state, onState, onShowWizard }: Props) {
   const [manualIp, setManualIp] = useState(state.settings.manualIp ?? '')
   const [socksPort, setSocksPort] = useState(String(state.settings.socksPort))
@@ -52,7 +49,6 @@ export function Settings({ state, onState, onShowWizard }: Props) {
   const [openAtLogin, setOpenAtLogin] = useState(state.settings.openAtLogin)
   const [saved, setSaved] = useState(false)
   const [advanced, setAdvanced] = useState(false)
-  const [showPresets, setShowPresets] = useState(false)
   const [showLanPassword, setShowLanPassword] = useState(false)
   const advancedRef = useRef<HTMLDivElement>(null)
   const securityRef = useRef<HTMLDivElement>(null)
@@ -68,6 +64,10 @@ export function Settings({ state, onState, onShowWizard }: Props) {
     diagnose,
     checkUpdates,
     installUpdate,
+    testingIp,
+    testPhone,
+    applyingManualIp,
+    applyManualIp,
   } = useBridgeActions(onState)
 
   const scrollToRef = (el: HTMLElement | null) => {
@@ -90,6 +90,11 @@ export function Settings({ state, onState, onShowWizard }: Props) {
   const [toggling, setToggling] = useState(false)
   const [diagHidden, setDiagHidden] = useState(false)
   const [diagCopied, setDiagCopied] = useState(false)
+  const [testResult, setTestResult] = useState<{
+    ok: boolean
+    message: string
+    kind: 'ok' | 'silent' | 'offline'
+  } | null>(null)
 
   const bridgeActive = state.settings.enabled && state.status !== 'disconnected'
   /** Soft-connected: healthy or grace (unstable) — keep peer list / soft rescan. */
@@ -196,6 +201,52 @@ export function Settings({ state, onState, onShowWizard }: Props) {
     } finally {
       setSaving(false)
     }
+  }
+
+  /** «Проверить»: is there a Happ proxy at this IP right now? */
+  const handleTestPhone = async () => {
+    const ip = manualIp.trim()
+    if (!ip) {
+      setTestResult({ ok: false, message: 'Введите IP телефона.', kind: 'offline' })
+      return
+    }
+    setTestResult(null)
+    try {
+      const r = await testPhone(ip)
+      let message: string
+      let kind: 'ok' | 'silent' | 'offline'
+      if (r.authCheck === 'auth-required') {
+        kind = 'offline'
+        message = 'Happ на этом IP есть, но требует логин/пароль LAN. Укажите их в настройках.'
+      } else if (r.authCheck === 'auth-failed') {
+        kind = 'offline'
+        message = 'Happ отклонил логин/пароль LAN. Проверьте данные.'
+      } else if (r.ok) {
+        kind = 'ok'
+        message = `Happ найден на ${ip} (порт ${r.socksPort}). Можно подключиться.`
+      } else if (r.tcp) {
+        kind = 'silent'
+        message =
+          `${ip} принимает соединение, но Happ не отвечает. ` +
+          'Разблокируйте экран и откройте Happ на телефоне.'
+      } else {
+        kind = 'offline'
+        message =
+          `По адресу ${ip}:${r.socksPort} никто не отвечает. ` +
+          'Проверьте, что телефон в этой же сети (или в VPN) и IP верный.'
+      }
+      setTestResult({ ok: r.ok, message, kind })
+    } catch {
+      setTestResult({ ok: false, message: 'Не удалось проверить. Попробуйте ещё раз.', kind: 'offline' })
+    }
+  }
+
+  /** «Подставить везде»: pin this IP as manual and connect to it. */
+  const handleApplyManualIp = async (ip = manualIp.trim()) => {
+    if (!ip) return
+    setTestResult(null)
+    await applyManualIp(ip)
+    setManualIp(ip)
   }
 
   return (
@@ -315,7 +366,8 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                 )}
                 {(bridgeError.kind === 'port-in-use' ||
                   bridgeError.kind === 'generic' ||
-                  bridgeError.kind === 'guidance') && (
+                  bridgeError.kind === 'guidance' ||
+                  bridgeError.kind === 'wake-phone') && (
                   <button
                     type="button"
                     disabled={busy || toggling}
@@ -392,45 +444,6 @@ export function Settings({ state, onState, onShowWizard }: Props) {
               onCopy={() => void copy('http')}
             />
           </div>
-
-          <button
-            type="button"
-            className="mt-2.5 flex items-center gap-1 text-left text-xs muted transition-colors hover:text-[var(--hb-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hb-ring)]"
-            onClick={() => setShowPresets((v) => !v)}
-            aria-expanded={showPresets}
-            title={showPresets ? 'Скрыть шпаргалки' : 'Показать шпаргалки для приложений'}
-          >
-            {showPresets ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            Шпаргалки для приложений
-          </button>
-
-          {showPresets && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  disabled={!bridgeActive}
-                  onClick={() => void copy(preset.id)}
-                  title={
-                    bridgeActive
-                      ? copied === preset.id
-                        ? 'Скопировано'
-                        : `Копировать настройки ${preset.label} (${preset.proto})`
-                      : 'Сначала подключите мост'
-                  }
-                  className="chip transition-colors hover:border-[var(--hb-border-strong)] hover:text-[var(--hb-text)] disabled:opacity-45"
-                >
-                  {copied === preset.id ? (
-                    <Check size={12} className="text-emerald-400" />
-                  ) : (
-                    <Copy size={12} />
-                  )}
-                  {preset.label} · {preset.proto}
-                </button>
-              ))}
-            </div>
-          )}
         </Card>
 
         <Card title="Приложения">
@@ -481,7 +494,11 @@ export function Settings({ state, onState, onShowWizard }: Props) {
                   Скрыть
                 </button>
               </div>
-              <DiagnosticsList items={state.diagnostics} />
+              <DiagnosticsList
+                items={state.diagnostics}
+                onRetry={() => void diagnose()}
+                onFind={() => void findPhone()}
+              />
             </>
           )}
           {(!state.diagnostics || state.diagnostics.length === 0 || diagHidden) && (
@@ -637,15 +654,75 @@ export function Settings({ state, onState, onShowWizard }: Props) {
 
               {advanced && (
                 <div className="mt-2 space-y-3 rounded-[10px] border border-[var(--hb-border)] bg-black/15 p-3">
-                  <Field
-                    label="IP телефона вручную"
-                    name="manualIp"
-                    hint="Если автопоиск не справляется"
-                    value={manualIp}
-                    onChange={setManualIp}
-                    placeholder="192.168.1.6"
-                    inputMode="decimal"
-                  />
+                  <div>
+                    <label className="block text-sm">
+                      <span className="text-[var(--hb-text)]">IP телефона вручную</span>
+                      <span className="mt-0.5 block text-xs muted">
+                        Если автопоиск не справляется. Введите IP и нажмите «Проверить».
+                      </span>
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          name="manualIp"
+                          value={manualIp}
+                          onChange={(e) => {
+                            setManualIp(e.currentTarget.value)
+                            setTestResult(null)
+                          }}
+                          placeholder="192.168.1.6"
+                          autoComplete="off"
+                          spellcheck={false}
+                          inputMode="decimal"
+                          className="field-input min-w-0 flex-1"
+                        />
+                        <button
+                          type="button"
+                          disabled={testingIp || applyingManualIp || !manualIp.trim()}
+                          onClick={() => void handleTestPhone()}
+                          className="btn-secondary btn-sm shrink-0"
+                          title="Проверить, есть ли Happ по этому адресу"
+                        >
+                          <BusyIcon busy={testingIp} icon={Search} size={14} />
+                          {testingIp ? 'Проверяю…' : 'Проверить'}
+                        </button>
+                      </div>
+                    </label>
+
+                    {testResult && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-[8px] border px-2 py-1 text-xs ${
+                            testResult.kind === 'ok'
+                              ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200'
+                              : testResult.kind === 'silent'
+                                ? 'border-amber-400/30 bg-amber-400/10 text-amber-200'
+                                : 'border-red-400/30 bg-red-400/10 text-red-200'
+                          }`}
+                        >
+                          {testResult.kind === 'ok' ? (
+                            <Check size={13} aria-hidden />
+                          ) : testResult.kind === 'silent' ? (
+                            <Wifi size={13} aria-hidden />
+                          ) : (
+                            <Ban size={13} aria-hidden />
+                          )}
+                          {testResult.message}
+                        </span>
+                        {testResult.ok && (
+                          <button
+                            type="button"
+                            disabled={applyingManualIp}
+                            onClick={() => void handleApplyManualIp()}
+                            className="btn-secondary btn-sm"
+                            title="Запомнить этот IP как телефон и подключиться к нему"
+                          >
+                            <BusyIcon busy={applyingManualIp} icon={Plug} size={14} />
+                            {applyingManualIp ? 'Подключаюсь…' : 'Подставить везде'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <Field
                       label="Порт SOCKS5"
@@ -813,7 +890,15 @@ function familiarIps(state: BridgeState): string[] {
   ]
 }
 
-function DiagnosticsList({ items }: { items: DiagnosticCheck[] }) {
+function DiagnosticsList({
+  items,
+  onRetry,
+  onFind,
+}: {
+  items: DiagnosticCheck[]
+  onRetry: () => void
+  onFind: () => void
+}) {
   const statusColor = (status: DiagnosticCheck['status']) =>
     status === 'ok' ? 'text-emerald-300' : status === 'warn' ? 'text-amber-300' : 'text-red-300'
   const dotColor = (status: DiagnosticCheck['status']) =>
@@ -831,6 +916,15 @@ function DiagnosticsList({ items }: { items: DiagnosticCheck[] }) {
               aria-label={statusTitle(item.status)}
             />
             {item.label}
+            {item.action && (
+              <button
+                type="button"
+                onClick={item.action === 'find' ? onFind : onRetry}
+                className="ml-auto rounded-md border border-[var(--hb-border)] px-2 py-0.5 text-xs font-normal text-[var(--hb-text)] transition-colors hover:bg-[var(--hb-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hb-ring)]"
+              >
+                {item.action === 'find' ? 'Найти телефон' : 'Повторить'}
+              </button>
+            )}
           </p>
           <p className="mt-0.5 pl-3.5 text-xs leading-relaxed muted">{item.detail}</p>
         </li>

@@ -231,7 +231,7 @@ export function Wizard({ state, onDone, onDismiss, onState }: Props) {
           {step === 2 && (
             <div className="space-y-3 text-sm text-[var(--hb-text-muted)]">
               <p>
-                Вставьте эти адреса в Telegram, Cursor, Firefox или WebStorm{' '}
+                Вставьте эти адреса в приложения{' '}
                 <strong className="font-medium text-[var(--hb-text)]">один раз</strong>:
               </p>
               <ProxyCopyButton
@@ -245,18 +245,6 @@ export function Wizard({ state, onDone, onDismiss, onState }: Props) {
                 value={state.httpLocal}
                 copied={copied === 'http'}
                 onCopy={() => void copy('http')}
-              />
-              <ProxyCopyButton
-                label="Telegram"
-                value="SOCKS5 · шпаргалка"
-                copied={copied === 'telegram'}
-                onCopy={() => void copy('telegram')}
-              />
-              <ProxyCopyButton
-                label="Cursor / IDE"
-                value="HTTP · шпаргалка"
-                copied={copied === 'cursor'}
-                onCopy={() => void copy('cursor')}
               />
               <div className="rounded-[10px] border border-sky-400/25 bg-[var(--hb-accent-soft)] px-3 py-2.5 text-xs leading-relaxed text-sky-100">
                 После «Готово» окно можно закрыть. Happ Bridge останется в строке меню.

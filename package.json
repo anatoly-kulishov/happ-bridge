@@ -108,6 +108,10 @@
     },
     "dmg": {
       "title": "Happ Bridge",
+      "window": {
+        "width": 540,
+        "height": 540
+      },
       "contents": [
         {
           "x": 140,
@@ -128,6 +132,12 @@
         {
           "x": 400,
           "y": 360,
+          "type": "file",
+          "path": "resources/macos/Запустить Happ Bridge.command"
+        },
+        {
+          "x": 270,
+          "y": 470,
           "type": "file",
           "path": "resources/macos/READ ME.txt"
         }

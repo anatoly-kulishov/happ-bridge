@@ -38,6 +38,33 @@ fi
 xattr -cr "$0" 2>/dev/null || true
 xattr -cr "$SRC" 2>/dev/null || true
 
+# Already installed? Offer to just launch it (clears quarantine, no re-copy).
+if [[ -d "$DEST" ]]; then
+  existing="$(osascript <<EOF
+display dialog "Happ Bridge уже установлен в «Программы».
+
+Запустить установленную копию или переустановить её заново?" \
+  with title "Happ Bridge" \
+  buttons {"Отмена", "Переустановить", "Запустить"} \
+  default button "Запустить"
+EOF
+)" || exit 0
+
+  if [[ "$existing" == *"Запустить"* ]]; then
+    xattr -cr "$DEST" 2>/dev/null || true
+    if xattr -p com.apple.quarantine "$DEST" >/dev/null 2>&1; then
+      xattr -d com.apple.quarantine "$DEST" 2>/dev/null || true
+      find "$DEST" -exec xattr -d com.apple.quarantine {} \; 2>/dev/null || true
+    fi
+    open "$DEST" || die "Не удалось запустить ${DEST}."
+    exit 0
+  fi
+
+  if [[ "$existing" != *"Переустановить"* ]]; then
+    exit 0
+  fi
+fi
+
 choice="$(osascript <<EOF
 display dialog "Установить Happ Bridge в папку «Программы»?
 

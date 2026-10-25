@@ -61,6 +61,8 @@ function quitApp(opts?: { installUpdate?: boolean }): Promise<void> {
         broadcast()
         return
       }
+      // The CLI env block is intentionally kept: it is guarded in the shell rc
+      // (`/dev/tcp` probe) so a stale block is inert when the listener is down.
       quitCleanupDone = true
       app.quit()
     }
@@ -398,6 +400,14 @@ function registerIpc(): void {
     return session!.selectPhone(ip)
   })
 
+  ipcMain.handle('bridge:testPhone', async (_e, ip: string) => {
+    return session!.testPhone(ip)
+  })
+
+  ipcMain.handle('bridge:applyManualIp', async (_e, ip: string) => {
+    return session!.applyManualIp(ip)
+  })
+
   ipcMain.handle('bridge:copy', (_e, kind: CopyPreset) => {
     const state = session!.getState()
     const text = presetText(
@@ -476,9 +486,8 @@ function registerIpc(): void {
   )
 
   ipcMain.handle('bridge:injectRelaunchOffer', async (_e, targets: InjectTarget[]) => {
-    const labels = targets
-      .map((id) => (id === 'cursor' ? 'Cursor' : id === 'webstorm' ? 'WebStorm' : 'Firefox'))
-      .join(', ')
+    const { INJECT_APPS, relaunchInjectApps } = await import('./inject')
+    const labels = targets.map((id) => INJECT_APPS[id].label).join(', ')
     const { response } = await dialog.showMessageBox({
       type: 'question',
       buttons: ['Перезапустить', 'Позже'],
@@ -488,7 +497,6 @@ function registerIpc(): void {
       detail: `${labels}\n\nЧтобы применить новый прокси, нужен полный перезапуск приложения, а не только окна.`,
     })
     if (response !== 0) return { restarted: false as const, results: [] }
-    const { relaunchInjectApps } = await import('./inject')
     const results = await relaunchInjectApps(targets)
     return { restarted: true as const, results }
   })

@@ -77,7 +77,7 @@ export function StatusBadge({
               />
             </div>
             <span className="shrink-0 text-xs tabular-nums muted">
-              {scan!.done}/{scan!.total}
+              {percent}%
             </span>
           </div>
           <p className="text-xs muted">Ищем {scan!.currentIp ?? 'телефон'}…</p>

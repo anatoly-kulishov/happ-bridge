@@ -30,7 +30,7 @@ function xmlEscape(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
-export type InjectTarget = 'cursor' | 'webstorm' | 'firefox'
+export type InjectTarget = 'cursor' | 'webstorm' | 'firefox' | 'codex'
 
 export type InjectPorts = {
   socksPort: number
@@ -67,6 +67,26 @@ export type InjectBatchResult = {
   status: InjectTargetInfo[]
 }
 
+/**
+ * Реестр приложений: одно приложение = одна карточка. Общий слой
+ * (статус, прописать, откатить, список бэкапов, перезапуск, иконки)
+ * идёт по реестру и ничего не знает про конкретные приложения.
+ *
+ * Как добавить приложение — см. комментарий у `INJECT_APPS`.
+ */
+export type InjectAppCard = {
+  id: InjectTarget
+  label: string
+  /** GUI — перезапускаем после прописки. CLI (env) — подхватит новый терминал. */
+  relaunchable: boolean
+  /** .app-бандлы для иконки в панели (только GUI). */
+  bundles?: (homeDir: string) => string[]
+  info(homeDir: string, backups: BackupStore): InjectTargetInfo
+  apply(ports: InjectPorts, homeDir: string, backups: BackupStore): InjectActionResult
+  revert(ports: InjectPorts, homeDir: string, backups: BackupStore): InjectActionResult
+  hasBackup(backups: BackupStore): boolean
+}
+
 type CursorSnapshot = {
   path: string
   /** Previous values for keys we manage; missing key ⇒ was absent */
@@ -91,10 +111,18 @@ type FirefoxSnapshot = {
   prefsPrevious?: Record<string, PrefScalar | null>
 }
 
+/** CLI proxy lives in shell env — a marked export block in ~/.bash_profile. */
+type CodexSnapshot = {
+  path: string
+  previousContent: string | null
+  existed: boolean
+}
+
 type BackupStore = {
   cursor?: CursorSnapshot
   webstorm?: FileSnapshot[]
   firefox?: FirefoxSnapshot
+  codex?: CodexSnapshot
 }
 
 const CURSOR_KEYS = [
@@ -116,6 +144,9 @@ const FF_PROXY_KEYS = [
 const FF_BEGIN = '// BEGIN happ-bridge managed'
 const FF_END = '// END happ-bridge managed'
 
+const CODEX_BEGIN = '# BEGIN happ-bridge managed — Codex CLI proxy'
+const CODEX_END = '# END happ-bridge managed — Codex CLI proxy'
+
 export function injectStatus(
   homeDir = os.homedir(),
   backupPath?: string,
@@ -124,11 +155,20 @@ export function injectStatus(
 
   // Each target is independent: one TCC/EPERM (e.g. Firefox profiles.ini)
   // must not blank the whole list as «не найдено».
-  return [
-    cursorInjectInfo(homeDir, backups),
-    webstormInjectInfo(homeDir, backups),
-    firefoxInjectInfo(homeDir, backups),
-  ]
+  return ALL_APPS.map((app) => {
+    try {
+      return app.info(homeDir, backups)
+    } catch (err) {
+      return {
+        id: app.id,
+        label: app.label,
+        available: false,
+        applied: app.hasBackup(backups),
+        path: null,
+        detail: `ошибка определения статуса: ${err instanceof Error ? err.message : String(err)}`,
+      }
+    }
+  })
 }
 
 function cursorInjectInfo(homeDir: string, backups: BackupStore): InjectTargetInfo {
@@ -210,6 +250,23 @@ function firefoxInjectInfo(homeDir: string, backups: BackupStore): InjectTargetI
   }
 }
 
+function codexInjectInfo(homeDir: string, backups: BackupStore): InjectTargetInfo {
+  const bashProfile = codexShellRcPath(homeDir)
+  const bashExists = safeExists(bashProfile)
+  // Env-блок глобальный для shell: доступен всегда (apply создаст ~/.bash_profile).
+  // Подхватят все CLI: codex, claude, gemini-cli, curl…
+  return {
+    id: 'codex',
+    label: 'CLI / Терминал',
+    available: true,
+    applied: Boolean(backups.codex),
+    path: bashExists ? bashProfile : null,
+    detail: bashExists
+      ? `~/.bash_profile — env для всех CLI (codex, claude, curl…)`
+      : 'Создадим ~/.bash_profile с env-прокси для всех CLI',
+  }
+}
+
 function safeExists(p: string): boolean {
   try {
     return fs.existsSync(p)
@@ -228,23 +285,15 @@ export function applyInject(
   const results: InjectActionResult[] = []
 
   for (const id of targets) {
+    const app = INJECT_APPS[id]
     try {
-      if (id === 'cursor') {
-        results.push(applyCursor(ports, homeDir, backups))
-      } else if (id === 'webstorm') {
-        results.push(applyWebstorm(ports, homeDir, backups))
-      } else if (id === 'firefox') {
-        results.push(applyFirefox(ports, homeDir, backups))
-      } else {
-        const _exhaustive: never = id
-        void _exhaustive
-      }
+      results.push(app.apply(ports, homeDir, backups))
     } catch (err) {
       results.push({
         id,
         ok: false,
         message: isPermissionDeniedError(err)
-          ? permissionDeniedMessage(id === 'cursor' ? 'Cursor' : id === 'webstorm' ? 'WebStorm' : 'Firefox')
+          ? permissionDeniedMessage(app.label)
           : err instanceof Error
             ? err.message
             : String(err),
@@ -266,23 +315,15 @@ export function revertInject(
   const results: InjectActionResult[] = []
 
   for (const id of targets) {
+    const app = INJECT_APPS[id]
     try {
-      if (id === 'cursor') {
-        results.push(revertCursor(homeDir, backups))
-      } else if (id === 'webstorm') {
-        results.push(revertWebstorm(backups))
-      } else if (id === 'firefox') {
-        results.push(revertFirefox(homeDir, backups, ports))
-      } else {
-        const _exhaustive: never = id
-        void _exhaustive
-      }
+      results.push(app.revert(ports, homeDir, backups))
     } catch (err) {
       results.push({
         id,
         ok: false,
         message: isPermissionDeniedError(err)
-          ? permissionDeniedMessage(id === 'cursor' ? 'Cursor' : id === 'webstorm' ? 'WebStorm' : 'Firefox')
+          ? permissionDeniedMessage(app.label)
           : err instanceof Error
             ? err.message
             : String(err),
@@ -297,11 +338,7 @@ export function revertInject(
 /** Targets that currently have a restore snapshot (actively injected). */
 export function listBackedUpTargets(backupPath?: string): InjectTarget[] {
   const backups = loadBackups(backupPath)
-  const out: InjectTarget[] = []
-  if (backups.cursor) out.push('cursor')
-  if (backups.webstorm?.length) out.push('webstorm')
-  if (backups.firefox) out.push('firefox')
-  return out
+  return ALL_APPS.filter((app) => app.hasBackup(backups)).map((app) => app.id)
 }
 
 export function revertAllInjected(
@@ -312,20 +349,20 @@ export function revertAllInjected(
   return revertInject(listBackedUpTargets(backupPath), ports, homeDir, backupPath)
 }
 
-const APP_NAME: Record<InjectTarget, string> = {
-  cursor: 'Cursor',
-  webstorm: 'WebStorm',
-  firefox: 'Firefox',
-}
-
-/** Quit + reopen so proxy prefs are picked up. */
+/** Quit + reopen so proxy prefs are picked up. Non-GUI targets (CLI) are skipped. */
 export async function relaunchInjectApps(
   targets: InjectTarget[],
 ): Promise<{ id: InjectTarget; ok: boolean; message: string }[]> {
   const out: { id: InjectTarget; ok: boolean; message: string }[] = []
   for (const id of targets) {
-    const name = APP_NAME[id]
+    const app = INJECT_APPS[id]
+    const name = app.label
     try {
+      if (!app.relaunchable) {
+        // CLI — env is picked up by a fresh shell, not a relaunch.
+        out.push({ id, ok: true, message: `${name}: прокси подхватится в новом терминале` })
+        continue
+      }
       await execFileAsync('osascript', [
         '-e',
         `tell application "${name}" to quit`,
@@ -716,6 +753,144 @@ function revertFirefox(
   }
 }
 
+/** Writes a marked export block into ~/.bash_profile — env proxy for all CLIs. */
+export function upsertCodexBlock(content: string, ports: InjectPorts): string {
+  const auth = injectAuth(ports)
+  const allUrl = socksProxyUrl('127.0.0.1', ports.socksPort, auth)
+  const block = [
+    CODEX_BEGIN,
+    '# Прокси включается только пока порт моста слушает: иначе терминал',
+    '# получил бы мёртвый прокси и CLI перестал бы работать.',
+    `if (exec 3<>/dev/tcp/127.0.0.1/${ports.socksPort}) 2>/dev/null; then`,
+    `  export ALL_PROXY='${allUrl}'`,
+    `  export HTTPS_PROXY='${allUrl}'`,
+    `  export HTTP_PROXY='${allUrl}'`,
+    "  export NO_PROXY='localhost,127.0.0.1'",
+    'fi',
+    CODEX_END,
+  ].join('\n')
+  const stripped = stripCodexBlock(content).trimEnd()
+  return stripped.length > 0 ? `${stripped}\n\n${block}\n` : `${block}\n`
+}
+
+/** Removes only the happ-bridge-marked codex block, leaving the rest intact. */
+export function stripCodexBlock(content: string): string {
+  const start = content.indexOf(CODEX_BEGIN)
+  if (start < 0) return content
+  const end = content.indexOf(CODEX_END, start)
+  if (end < 0) return content
+  const after = end + CODEX_END.length
+  const before = content.slice(0, start).replace(/\n+$/, '')
+  const rest = content.slice(after).replace(/^\n+/, '')
+  if (!before) return rest
+  if (!rest) return `${before}\n`
+  return `${before}\n\n${rest}`
+}
+
+function applyCodex(
+  ports: InjectPorts,
+  homeDir: string,
+  backups: BackupStore,
+): InjectActionResult {
+  const rcPath = codexShellRcPath(homeDir)
+  const existed = fs.existsSync(rcPath)
+  const current = existed ? fs.readFileSync(rcPath, 'utf8') : ''
+  if (!backups.codex) {
+    backups.codex = { path: rcPath, previousContent: existed ? current : null, existed }
+  }
+  fs.mkdirSync(path.dirname(rcPath), { recursive: true })
+  fs.writeFileSync(rcPath, upsertCodexBlock(current, ports), 'utf8')
+  return {
+    id: 'codex',
+    ok: true,
+    message:
+      `Экспорт прокси для всех CLI записан в ${rcPath}. Откройте новый терминал ` +
+      '(или выполните `source ~/.bash_profile`). Проверка: `echo $ALL_PROXY`.',
+  }
+}
+
+function revertCodex(homeDir: string, backups: BackupStore): InjectActionResult {
+  const snap = backups.codex
+  if (!snap) {
+    return { id: 'codex', ok: false, message: 'Нет сохранённого отката для CLI / Терминала' }
+  }
+  const rcPath = snap.path || codexShellRcPath(homeDir)
+  if (!snap.existed) {
+    if (fs.existsSync(rcPath)) fs.unlinkSync(rcPath)
+  } else if (snap.previousContent != null) {
+    fs.mkdirSync(path.dirname(rcPath), { recursive: true })
+    fs.writeFileSync(rcPath, snap.previousContent, 'utf8')
+  } else if (fs.existsSync(rcPath)) {
+    // No-backed-up content but file exists: fall back to stripping our block.
+    const cleaned = stripCodexBlock(fs.readFileSync(rcPath, 'utf8'))
+    fs.writeFileSync(rcPath, cleaned, 'utf8')
+  }
+  delete backups.codex
+  return {
+    id: 'codex',
+    ok: true,
+    message:
+      'CLI / Терминал: env-прокси откачен. Откройте новый терминал или `source ~/.bash_profile`.',
+  }
+}
+
+/**
+ * Реестр приложений. Как добавить новое приложение:
+ *  1. Добавить id в `InjectTarget` (строка 33).
+ *  2. Написать info/apply/revert (рядом с applyCursor/applyFirefox).
+ *     Если конфиг — один файл, переиспользуй `FileSnapshot`; по ключам —
+ *     CursorSnapshot/FirefoxSnapshot.
+ *  3. Для GUI: `bundles` = функция из appPaths (нужна для иконки и детекта
+ *     «приложение есть, конфиг создадим при прописке»). Для CLI — не указывать.
+ *  4. Добавить карточку ниже. Забыл — компилятор упадёт (Record<InjectTarget,…>).
+ *  5. Иконка-подпись в src/components/InjectAppsPanel.tsx (targetMeta).
+ *  6. Тест в scripts/selfcheck.ts (apply → содержат прокси → revert → as-было).
+ */
+export const INJECT_APPS: Record<InjectTarget, InjectAppCard> = {
+  cursor: {
+    id: 'cursor',
+    label: 'Cursor',
+    relaunchable: true,
+    bundles: cursorAppBundles,
+    info: cursorInjectInfo,
+    apply: applyCursor,
+    revert: (_ports, homeDir, backups) => revertCursor(homeDir, backups),
+    hasBackup: (b) => Boolean(b.cursor),
+  },
+  webstorm: {
+    id: 'webstorm',
+    label: 'WebStorm',
+    relaunchable: true,
+    bundles: webstormAppBundles,
+    info: webstormInjectInfo,
+    apply: applyWebstorm,
+    revert: (_ports, _homeDir, backups) => revertWebstorm(backups),
+    hasBackup: (b) => Boolean(b.webstorm?.length),
+  },
+  firefox: {
+    id: 'firefox',
+    label: 'Firefox',
+    relaunchable: true,
+    bundles: firefoxAppBundles,
+    info: firefoxInjectInfo,
+    apply: applyFirefox,
+    revert: (ports, homeDir, backups) => revertFirefox(homeDir, backups, ports),
+    hasBackup: (b) => Boolean(b.firefox),
+  },
+  codex: {
+    id: 'codex',
+    label: 'CLI / Терминал',
+    relaunchable: false,
+    info: codexInjectInfo,
+    apply: applyCodex,
+    revert: (_ports, homeDir, backups) => revertCodex(homeDir, backups),
+    hasBackup: (b) => Boolean(b.codex),
+  },
+}
+
+/** Стабильный порядок для UI и корневого статуса. */
+export const ALL_APPS: readonly InjectAppCard[] = Object.values(INJECT_APPS)
+
 /**
  * Prefs to write on quit: prefer snapshotted direct Happ IP; if snapshot was
  * missing or already 127.0.0.1, use ports.phoneIp. Never default to "system".
@@ -914,6 +1089,11 @@ function cursorSettingsPath(homeDir: string): string {
   )
 }
 
+/** Shell rc used by Codex CLI to read proxy env. Bash is the interactive login shell here. */
+function codexShellRcPath(homeDir: string): string {
+  return path.join(homeDir, '.bash_profile')
+}
+
 function jetbrainsRoot(homeDir: string): string {
   return path.join(homeDir, 'Library', 'Application Support', 'JetBrains')
 }
@@ -1060,7 +1240,10 @@ function saveBackups(backupPath: string | undefined, store: BackupStore): void {
   if (!backupPath) return
   fs.mkdirSync(path.dirname(backupPath), { recursive: true })
   const empty =
-    !store.cursor && (!store.webstorm || store.webstorm.length === 0) && !store.firefox
+    !store.cursor &&
+    (!store.webstorm || store.webstorm.length === 0) &&
+    !store.firefox &&
+    !store.codex
   if (empty) {
     if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath)
     return

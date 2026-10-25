@@ -6,6 +6,16 @@ import type {
 } from './inject'
 import type { CopyPreset } from './presets'
 import type { AppSettings, BridgeState } from './types'
+import type { ProxyAuthCheck } from './relay'
+
+export type TestPhoneResult = {
+  ok: boolean
+  authCheck: ProxyAuthCheck
+  /** Raw TCP accept — separates «телефон не в сети» from «Happ молчит». */
+  tcp: boolean
+  ip: string
+  socksPort: number
+}
 
 const api = {
   getState: (): Promise<BridgeState> => ipcRenderer.invoke('bridge:getState'),
@@ -19,6 +29,10 @@ const api = {
     ipcRenderer.invoke('bridge:setEnabled', enabled),
   selectPhone: (ip: string): Promise<BridgeState> =>
     ipcRenderer.invoke('bridge:selectPhone', ip),
+  testPhone: (ip: string): Promise<TestPhoneResult> =>
+    ipcRenderer.invoke('bridge:testPhone', ip),
+  applyManualIp: (ip: string): Promise<BridgeState> =>
+    ipcRenderer.invoke('bridge:applyManualIp', ip),
   copy: (kind: CopyPreset): Promise<string> =>
     ipcRenderer.invoke('bridge:copy', kind),
   saveSettings: (patch: Partial<AppSettings>): Promise<BridgeState> =>

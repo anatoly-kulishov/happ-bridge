@@ -70,6 +70,7 @@ export type BridgeErrorKind =
   | 'auth'
   | 'validation'
   | 'guidance'
+  | 'wake-phone'
   | 'generic'
 
 export type ParsedBridgeError = {
@@ -171,6 +172,15 @@ export function parseBridgeError(error: string): ParsedBridgeError {
     return {
       kind: 'guidance',
       title: 'Телефон в другой сети',
+      body: trimmed,
+      tone: 'warning',
+    }
+  }
+
+  if (/в сети, но Happ не отвечает/i.test(trimmed)) {
+    return {
+      kind: 'wake-phone',
+      title: 'Happ не отвечает на телефоне',
       body: trimmed,
       tone: 'warning',
     }

@@ -61,6 +61,31 @@ export function useBridgeActions(onState: (s: BridgeState) => void) {
     await window.happBridge.installUpdate()
   }, [])
 
+  const [testingIp, setTestingIp] = useState(false)
+  const testPhone = useCallback(async (ip: string) => {
+    setTestingIp(true)
+    try {
+      return await window.happBridge.testPhone(ip)
+    } finally {
+      setTestingIp(false)
+    }
+  }, [])
+
+  const [applyingManualIp, setApplyingManualIp] = useState(false)
+  const applyManualIp = useCallback(
+    async (ip: string) => {
+      setApplyingManualIp(true)
+      try {
+        const state = await window.happBridge.applyManualIp(ip)
+        onState(state)
+        return state
+      } finally {
+        setApplyingManualIp(false)
+      }
+    },
+    [onState],
+  )
+
   return {
     busy,
     diagnosing,
@@ -73,5 +98,9 @@ export function useBridgeActions(onState: (s: BridgeState) => void) {
     diagnose,
     checkUpdates,
     installUpdate,
+    testingIp,
+    testPhone,
+    applyingManualIp,
+    applyManualIp,
   }
 }

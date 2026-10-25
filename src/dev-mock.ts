@@ -75,6 +75,14 @@ const injectTargetsInfo: InjectTargetInfo[] = [
     path: '/Users/demo/Library/Application Support/Firefox/Profiles/…',
     detail: '/Users/demo/Library/Application Support/Firefox/Profiles/…',
   },
+  {
+    id: 'codex',
+    label: 'CLI / Терминал',
+    available: true,
+    applied: true,
+    path: '/Users/demo/.bash_profile',
+    detail: '~/.bash_profile — env для всех CLI (codex, claude, curl…)',
+  },
 ]
 
 export function installDevMock() {
@@ -136,6 +144,28 @@ export function installDevMock() {
       broadcast(state)
       return clone(state)
     },
+    testPhone: async (ip: string) => {
+      await delay(600)
+      const silent = ip.endsWith('.13')
+      return {
+        ok: !silent,
+        authCheck: silent ? ('unreachable' as const) : ('ok' as const),
+        tcp: !ip.endsWith('.12'),
+        ip,
+        socksPort: state.settings.socksPort,
+      }
+    },
+    applyManualIp: async (ip: string): Promise<BridgeState> => {
+      state = {
+        ...state,
+        status: 'connected',
+        phoneIp: ip,
+        peers: [ip],
+        settings: { ...state.settings, enabled: true, manualIp: ip },
+      }
+      broadcast(state)
+      return clone(state)
+    },
     copy: async (kind: string): Promise<string> => {
       void kind
       return 'copied'
@@ -159,12 +189,13 @@ export function installDevMock() {
       state = {
         ...state,
         diagnostics: [
-          { id: 'wifi', status: 'ok' as const, label: 'Wi‑Fi / локальная сеть', detail: 'Компьютер в сети: 192.168.0.10' },
-          { id: 'happ', status: 'ok' as const, label: 'Happ на телефоне', detail: 'Happ отвечает на 192.168.0.244:10808 (логин ок)' },
-          { id: 'auth', status: 'ok' as const, label: 'Пароль LAN', detail: 'Не задан. В Happ можно включить логин/пароль для LAN.' },
-          { id: 'relay', status: 'ok' as const, label: 'Локальный мост', detail: 'Мост работает: сквозная проверка 127.0.0.1:10808 прошла' },
-          { id: 'bridge', status: 'ok' as const, label: 'Статус моста', detail: 'Подключено к 192.168.0.244' },
-          { id: 'inject', status: 'ok' as const, label: 'Прописка в приложения', detail: 'прописано: Cursor, WebStorm' },
+          { id: 'ports', status: 'ok' as const, label: 'Локальные порты', detail: 'SOCKS 127.0.0.1:10808 · HTTP 127.0.0.1:10809 слушают' },
+          { id: 'cli', status: 'ok' as const, label: 'CLI / Терминал', detail: 'Прописан в ~/.bash_profile: новые терминалы и OpenCode ходят через мост (socks5://127.0.0.1:10808)' },
+          { id: 'apps', status: 'warn' as const, label: 'Приложения', detail: 'Не прописано ни одно приложение. В карточке «Приложения» нажмите «Прописать» у нужного — иначе оно ходит напрямую.' },
+          { id: 'network', status: 'ok' as const, label: 'Wi‑Fi / сеть', detail: 'Mac в сети: 192.168.0.10 · Wi‑Fi: HomeBox · домашняя сеть' },
+          { id: 'phone', status: 'ok' as const, label: 'Телефон (TCP)', detail: 'TCP 192.168.0.244:10808 отвечает — телефон в этой сети и порт открыт' },
+          { id: 'happ', status: 'fail' as const, label: 'Happ (SOCKS5)', detail: 'Телефон отвечает по TCP, но Happ молчит на 192.168.0.244:10808. Обычно он спит: разблокируйте телефон, откройте Happ и нажмите «Повторить».', action: 'retry' as const },
+          { id: 'relay', status: 'warn' as const, label: 'Сквозная проверка', detail: 'Телефон не подключён — порт работает в режиме fail-open: трафик приложений идёт напрямую через Mac, а не через телефон.' },
         ],
       }
       broadcast(state)

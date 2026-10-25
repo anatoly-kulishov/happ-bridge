@@ -82,10 +82,11 @@ export class ProxyRelay {
   }
 
   /**
-   * Ensure listeners are up for current ports and point at phoneIp.
+   * Ensure listeners are up for current ports and point at phoneIp
+   * (null = fail-open: serve SOCKS5 directly over the Mac's uplink).
    * Concurrent starts are serialized. Failed bind rolls back fully.
    */
-  async start(phoneIp: string): Promise<void> {
+  async start(phoneIp: string | null): Promise<void> {
     const run = this.startLock.then(() => this.startExclusive(phoneIp))
     // Keep the chain alive after failures so later starts still queue.
     this.startLock = run.then(
@@ -95,7 +96,7 @@ export class ProxyRelay {
     return run
   }
 
-  private async startExclusive(phoneIp: string): Promise<void> {
+  private async startExclusive(phoneIp: string | null): Promise<void> {
     if (this.ports.socksPort === this.ports.httpPort) {
       await this.stop()
       throw new Error('socksPort and httpPort must differ')
@@ -162,8 +163,11 @@ export class ProxyRelay {
   private listen(localPort: number, remotePort: number): net.Server {
     const server = net.createServer((client) => {
       if (!this.phoneIp) {
-        log('relay', 'inbound :%d dropped — no target', localPort)
-        client.destroy()
+        // Fail-open: no phone target (disconnected / not found yet). Serve
+        // SOCKS5 locally and dial the destination over the Mac's own uplink,
+        // so clients pinned to 127.0.0.1:<port> (CLIs, system proxy) keep
+        // working instead of hanging/failing.
+        this.handleFailOpenSocks(client, localPort)
         return
       }
       const target = this.phoneIp
@@ -231,6 +235,133 @@ export class ProxyRelay {
     server.on('error', (err) => this.onError?.(err))
     server.listen(localPort, '127.0.0.1')
     return server
+  }
+
+  /**
+   * Minimal SOCKS5 server for fail-open mode: greet → (optional
+   * username/password, accepted unconditionally) → CONNECT → direct dial.
+   * Also answers plain HTTP-proxy `CONNECT host:port HTTP/1.1` — some native
+   * apps (ChatGPT.app) talk HTTP-proxy instead of SOCKS5.
+   * Deliberately does NOT touch lastTrafficAt — direct traffic does not
+   * prove the phone is alive.
+   */
+  private handleFailOpenSocks(client: net.Socket, localPort: number): void {
+    log('relay', 'inbound :%d — no phone target, fail-open direct SOCKS5', localPort)
+    let buf = Buffer.alloc(0)
+    let stage: 'greet' | 'auth' | 'req' | 'done' = 'greet'
+    let remote: net.Socket | null = null
+
+    const destroy = () => {
+      client.destroy()
+      remote?.destroy()
+    }
+    client.setTimeout(10_000, destroy)
+    client.on('error', destroy)
+
+    const openTunnel = (host: string, dport: number, leftover: Buffer | null, okReply: string): void => {
+      stage = 'done'
+      const r = net.connect({ host, port: dport })
+      remote = r
+      r.once('connect', () => {
+        client.write(okReply)
+        if (leftover && leftover.length > 0) r.write(leftover)
+        client.pipe(r)
+        r.pipe(client)
+        log('relay', 'fail-open :%d → %s:%d (direct, Mac uplink)', localPort, host, dport)
+      })
+      r.once('error', destroy)
+      client.setTimeout(0)
+    }
+
+    client.on('data', (chunk) => {
+      if (stage === 'done') return // tunneled data — pipe handles it
+      buf = Buffer.concat([buf, chunk])
+      try {
+        if (stage === 'greet') {
+          if (buf.length < 2) return
+          if (buf[0] !== 0x05) {
+            // Not SOCKS: try to parse an HTTP-proxy CONNECT request.
+            const end = buf.indexOf('\r\n\r\n')
+            if (end === -1) {
+              if (buf.length > 8 * 1024) return destroy()
+              return
+            }
+            const firstLine = buf.subarray(0, buf.indexOf('\r\n')).toString('utf8')
+            const m = /^CONNECT\s+([^\s:]+):(\d+)\s+HTTP\/1\.[01]$/.exec(firstLine)
+            if (!m) return destroy()
+            const leftover = buf.subarray(end + 4)
+            buf = Buffer.alloc(0)
+            openTunnel(m[1], Number(m[2]), leftover, 'HTTP/1.1 200 Connection established\r\n\r\n')
+            return
+          }
+          const n = buf[1]
+          if (buf.length < 2 + n) return
+          const methods = [...buf.subarray(2, 2 + n)]
+          buf = Buffer.alloc(0)
+          if (methods.includes(0x00)) {
+            client.write(Buffer.from([0x05, 0x00]))
+            stage = 'req'
+          } else if (methods.includes(0x02)) {
+            client.write(Buffer.from([0x05, 0x02]))
+            stage = 'auth'
+          } else {
+            client.write(Buffer.from([0x05, 0xff]))
+            client.end()
+          }
+          return
+        }
+
+        if (stage === 'auth') {
+          // ver, ulen, user, plen, pass — accepted unconditionally.
+          if (buf.length < 2) return
+          const ulen = buf[1]
+          if (buf.length < 2 + ulen + 1) return
+          const plen = buf[2 + ulen]
+          if (buf.length < 3 + ulen + plen) return
+          buf = Buffer.alloc(0)
+          client.write(Buffer.from([0x01, 0x00]))
+          stage = 'req'
+          return
+        }
+
+        if (buf.length < 7) return
+        if (buf[0] !== 0x05) return destroy()
+        const cmd = buf[1]
+        const atyp = buf[3]
+        let host: string
+        let off: number
+        if (atyp === 0x01) {
+          if (buf.length < 10) return
+          host = [buf[4], buf[5], buf[6], buf[7]].join('.')
+          off = 10
+        } else if (atyp === 0x03) {
+          const len = buf[4]
+          if (buf.length < 7 + len) return
+          host = buf.subarray(5, 5 + len).toString('utf8')
+          off = 7 + len
+        } else if (atyp === 0x04) {
+          if (buf.length < 22) return
+          host = (Buffer.from(buf.subarray(4, 20)).toString('hex').match(/.{4}/g) ?? []).join(':')
+          off = 22
+        } else {
+          client.write(Buffer.from([0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0]))
+          return destroy()
+        }
+        const dport = buf.readUInt16BE(off - 2)
+        const leftover = buf.length > off + 2 ? buf.subarray(off + 2) : null
+        buf = Buffer.alloc(0)
+
+        if (cmd !== 0x01) {
+          // 0x07 — command not supported
+          client.write(Buffer.from([0x05, 0x07, 0x00, 0x01, 0, 0, 0, 0, 0]))
+          return destroy()
+        }
+
+        openTunnel(host, dport, leftover, '\u0005\u0000\u0000\u0001\u0000\u0000\u0000\u0000\u0000')
+      } catch {
+        destroy()
+      }
+    })
   }
 }
 

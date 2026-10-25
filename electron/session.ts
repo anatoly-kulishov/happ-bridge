@@ -14,7 +14,7 @@ import {
   waitForLocalIpv4,
   waitForPhoneRoute,
 } from './discover'
-import { ProxyRelay, checkProxyAuth, probeSocks5 } from './relay'
+import { ProxyRelay, checkProxyAuth, probeSocks5, type ProxyAuthCheck } from './relay'
 import { loadSettings, saveSettings } from './store'
 import {
   isIpv4,
@@ -137,6 +137,14 @@ export class BridgeSession {
     log('session', 'create: enabled=%s manualIp=%s lastPhoneIp=%s recent=%o ports=%d/%d',
       settings.enabled, settings.manualIp, settings.lastPhoneIp, settings.recentPhoneIps, settings.socksPort, settings.httpPort)
     const session = new BridgeSession(hooks, settings)
+    // Local listener is up for the whole app lifetime: tunnel while connected,
+    // fail-open (direct dial over the Mac's own uplink) when there is no phone.
+    // This keeps CLIs/system-proxy pinned to 127.0.0.1 working at all times.
+    try {
+      await session.relay.start(null)
+    } catch (err) {
+      log('session', 'relay pre-start failed: %s', err instanceof Error ? err.message : String(err))
+    }
     await session.refreshWifi()
     return session
   }
@@ -271,12 +279,12 @@ export class BridgeSession {
     }
   }
 
-  /** Tear down relay; stay off until Find / select (or enable). */
+  /** Stay off until Find / select (or enable); the local listener stays up (fail-open). */
   async disconnect(): Promise<BridgeState> {
     this.holdOff = true
     this.discoverAbort?.abort()
     this.errorMessage = null
-    await this.relay.stop()
+    this.relay.setPhoneIp(null)
     this.phoneIp = null
     this.peers = []
     this.setStatus('disconnected')
@@ -296,7 +304,7 @@ export class BridgeSession {
     if (!enabled) {
       this.holdOff = true
       this.discoverAbort?.abort()
-      await this.relay.stop()
+      this.relay.setPhoneIp(null)
       this.phoneIp = null
       this.setStatus('disconnected')
       return this.getState()
@@ -327,9 +335,14 @@ export class BridgeSession {
     const auth = socksAuthFromSettings(this.settings)
     const ok = await probeSocks5(ip, this.settings.socksPort, 600, undefined, auth)
     if (!ok) {
-      this.errorMessage = auth
-        ? `Happ не отвечает на ${ip} (проверьте LAN-пароль)`
-        : `Happ не отвечает на ${ip}`
+      // Same conflation as runConnect: probeSocks5 returns false both when the
+      // phone is off-net and when its kernel accepts TCP but Happ is silent
+      // (screen locked / app suspended). Surface the actionable wake hint.
+      this.errorMessage = await wakePhoneOrUnreachableMessage(
+        ip,
+        this.settings.socksPort,
+        this.discoverAbort?.signal,
+      )
       this.hooks.onChange()
       return this.getState()
     }
@@ -355,6 +368,59 @@ export class BridgeSession {
     this.setStatus('connected')
     if (this.settings.wizardDone) this.announceReady()
     return this.getState()
+  }
+
+  /**
+   * Verify that a manually entered IP actually carries a Happ proxy. Read-only:
+   * does not change settings, the peer list, or the connection. Lets the user
+   * confirm an address before pinning it as manualIp.
+   */
+  async testPhone(ip: string): Promise<{
+    ok: boolean
+    authCheck: ProxyAuthCheck
+    /** Raw TCP accept — separates «телефон не в сети» from «Happ молчит». */
+    tcp: boolean
+    ip: string
+    socksPort: number
+  }> {
+    const socksPort = this.settings.socksPort
+    if (!isIpv4(ip)) {
+      return { ok: false, authCheck: 'unreachable', tcp: false, ip, socksPort }
+    }
+    const auth = socksAuthFromSettings(this.settings)
+    const tcp = await probeTcp(ip, socksPort, 1000, this.discoverAbort?.signal)
+    const reachable = await probeSocks5(ip, socksPort, 800, undefined, auth)
+    if (!reachable) {
+      return { ok: false, authCheck: 'unreachable', tcp, ip, socksPort }
+    }
+    const authCheck = await checkProxyAuth(ip, socksPort, 1000, auth)
+    return { ok: authCheck === 'ok', authCheck, tcp, ip, socksPort }
+  }
+
+  /**
+   * «Подставить везде»: pin this IP as the manual phone (so autodiscovery keeps
+   * preferring it across network changes) and immediately connect to it. The
+   * manualIp persistence reuses the normal settings path, which already
+   * triggers a reconnect when manualIp changes.
+   */
+  async applyManualIp(ip: string): Promise<BridgeState> {
+    if (!isIpv4(ip)) {
+      this.errorMessage = 'Некорректный IP'
+      this.hooks.onChange()
+      return this.getState()
+    }
+    if (!this.settings.enabled || this.settings.manualIp !== ip) {
+      // Update memory + disk together: a later save of another field must not
+      // write back a stale settings object and wipe the pinned IP.
+      this.settings = { ...this.settings, enabled: true, manualIp: ip }
+      await saveSettings(this.settings)
+    }
+    this.holdOff = false
+    this.errorMessage = null
+    // selectPhone probes this exact IP and, on success, starts the relay to it —
+    // the snappiest way to latch the phone right away while the manualIp save
+    // above keeps it preferred for future autodiscovery.
+    return this.selectPhone(ip)
   }
 
   /**
@@ -436,6 +502,8 @@ export class BridgeSession {
         socksPort: this.settings.socksPort,
         httpPort: this.settings.httpPort,
       })
+      // Listener must stay up (fail-open) after a port switch.
+      await this.relay.start(this.phoneIp)
     }
 
     const needsReconnect =
@@ -477,7 +545,6 @@ export class BridgeSession {
       settings: this.settings,
       phoneIp: this.phoneIp,
       relay: this.relay,
-      statusConnected: this.status === 'connected',
       wifiSsid: this.wifiSsid,
       isHomeNetwork: isHomeSsid(this.wifiSsid, this.settings.homeSsids),
     })
@@ -619,14 +686,14 @@ export class BridgeSession {
 
       if (found.length === 0) {
         log('runConnect', 'no phone found. localIps=%o wifiSsid=%s', localIpv4Addresses(), this.wifiSsid)
-        await this.relay.stop()
+        this.relay.setPhoneIp(null)
         this.phoneIp = null
         this.setStatus('disconnected')
         // A known phone accepts TCP but its Happ app stays silent — almost always
         // the OS suspended it with the screen locked. Give the user an actionable hint.
         if (this.tcpReachableButSilent) {
           this.errorMessage =
-            'Телефон в сети, но Happ не отвечает. Вероятно, экран заблокирован или Happ в фоне. Разблокируйте экран и откройте Happ.'
+            'Телефон в сети, но Happ не отвечает. Разблокируйте экран и откройте Happ (в фоне или с заблокированным экраном он молчит), затем нажмите «Повторить».'
           this.hooks.onChange()
         } else if (
           preferredIps.length > 0 &&
@@ -661,7 +728,7 @@ export class BridgeSession {
         })
       if (untrustedNoAuth) {
         log('runConnect', 'UNTRUSTED network, no auth → not auto-connecting. wifiSsid=%s homeSsids=%o', this.wifiSsid, this.settings.homeSsids)
-        await this.relay.stop()
+        this.relay.setPhoneIp(null)
         this.phoneIp = null
         this.setStatus('disconnected')
         this.errorMessage =
@@ -684,7 +751,7 @@ export class BridgeSession {
 
       if (!chosen) {
         logDebug('runConnect', 'chosen=null found=%o manualIp=%s', found, this.settings.manualIp)
-        await this.relay.stop()
+        this.relay.setPhoneIp(null)
         this.phoneIp = null
         this.setStatus('disconnected')
         this.errorMessage =
@@ -706,10 +773,19 @@ export class BridgeSession {
         if (attempt < SOCKS_WAKE_RETRIES) await sleep(500, this.discoverAbort?.signal)
       }
       if (authCheck !== 'ok') {
-        await this.relay.stop()
+        this.relay.setPhoneIp(null)
         this.phoneIp = null
         this.setStatus('disconnected')
-        this.errorMessage = authCheckMessage(authCheck)
+        // authCheck 'unreachable' conflates two very different situations:
+        // (a) the phone's kernel accepts TCP but Happ itself is silent (OS
+        //     suspended it with the screen locked) — the peer list still shows
+        //     the phone, so we must say "found, but wake Happ", not "not found";
+        // (b) the phone is genuinely off-net / not responding at all.
+        // Surface (a) with an actionable hint instead of a misleading generic.
+        this.errorMessage =
+          authCheck === 'unreachable'
+            ? await wakePhoneOrUnreachableMessage(chosen, this.settings.socksPort, this.discoverAbort?.signal)
+            : authCheckMessage(authCheck)
         this.hooks.onChange()
         return false
       }
@@ -730,7 +806,7 @@ export class BridgeSession {
       if (this.discoverAbort.signal.aborted) return false
       log('runConnect', 'ERROR reason=%s err=%s', reason, err instanceof Error ? err.message : String(err))
       this.errorMessage = presentError(err)
-      await this.relay.stop()
+      this.relay.setPhoneIp(null)
       this.phoneIp = null
       this.setStatus('disconnected')
       return false
@@ -978,6 +1054,30 @@ function authCheckMessage(check: 'auth-required' | 'auth-failed' | 'unreachable'
     case 'unreachable':
       return 'Happ не отвечает. Проверьте телефон и «Разрешить LAN подключение».'
   }
+}
+
+/**
+ * Classify why a discovered peer's SOCKS handshake timed out. The phone's TCP
+ * stack (kernel) often comes up before the Happ app does — so an open port
+ * with a silent SOCKS server almost always means the OS suspended Happ with
+ * the screen locked, one of the most common "can't connect" causes. Distinguish
+ * that (actionable: wake the phone) from a genuinely off-net peer so the UI
+ * never says «телефон не найден» for a phone that's plainly in the list.
+ */
+async function wakePhoneOrUnreachableMessage(
+  ip: string,
+  socksPort: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  const tcpReachable = await probeTcp(ip, socksPort, 1000, signal)
+  if (tcpReachable) {
+    log('runConnect', 'TCP reachable but Happ silent ip=%s', ip)
+    return (
+      `Телефон ${ip} в сети, но Happ не отвечает. ` +
+      'Разблокируйте экран и откройте Happ (в фоне или с заблокированным экраном он молчит), затем нажмите «Повторить».'
+    )
+  }
+  return authCheckMessage('unreachable')
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
