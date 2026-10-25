@@ -77,11 +77,11 @@ const injectTargetsInfo: InjectTargetInfo[] = [
   },
   {
     id: 'codex',
-    label: 'CLI / Терминал',
+    label: 'Codex CLI',
     available: true,
     applied: true,
     path: '/Users/demo/.bash_profile',
-    detail: '~/.bash_profile — env для всех CLI (codex, claude, curl…)',
+    detail: '~/.bash_profile — обёртка codex() с SOCKS-прокси (только codex)',
   },
 ]
 
@@ -190,7 +190,7 @@ export function installDevMock() {
         ...state,
         diagnostics: [
           { id: 'ports', status: 'ok' as const, label: 'Локальные порты', detail: 'SOCKS 127.0.0.1:10808 · HTTP 127.0.0.1:10809 слушают' },
-          { id: 'cli', status: 'ok' as const, label: 'CLI / Терминал', detail: 'Прописан в ~/.bash_profile: новые терминалы и OpenCode ходят через мост (socks5://127.0.0.1:10808)' },
+          { id: 'cli', status: 'ok' as const, label: 'Codex CLI', detail: 'Обёртка codex() в ~/.bash_profile: codex ходит через мост (socks5://127.0.0.1:10808), остальные CLI — напрямую' },
           { id: 'apps', status: 'warn' as const, label: 'Приложения', detail: 'Не прописано ни одно приложение. В карточке «Приложения» нажмите «Прописать» у нужного — иначе оно ходит напрямую.' },
           { id: 'network', status: 'ok' as const, label: 'Wi‑Fi / сеть', detail: 'Mac в сети: 192.168.0.10 · Wi‑Fi: HomeBox · домашняя сеть' },
           { id: 'phone', status: 'ok' as const, label: 'Телефон (TCP)', detail: 'TCP 192.168.0.244:10808 отвечает — телефон в этой сети и порт открыт' },

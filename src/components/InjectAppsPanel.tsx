@@ -27,7 +27,7 @@ const targetMeta: Record<
   cursor: { label: 'Cursor', icon: MousePointer2 },
   webstorm: { label: 'WebStorm', icon: Code2 },
   firefox: { label: 'Firefox', icon: AppWindow },
-  codex: { label: 'CLI / Терминал', icon: Code2 },
+  codex: { label: 'Codex CLI', icon: Code2 },
 }
 
 /** Short status when the target cannot be selected. */

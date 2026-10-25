@@ -77,7 +77,7 @@ export type InjectBatchResult = {
 export type InjectAppCard = {
   id: InjectTarget
   label: string
-  /** GUI — перезапускаем после прописки. CLI (env) — подхватит новый терминал. */
+  /** GUI — перезапускаем после прописки. CLI (обёртка в rc) — подхватит новый терминал. */
   relaunchable: boolean
   /** .app-бандлы для иконки в панели (только GUI). */
   bundles?: (homeDir: string) => string[]
@@ -253,17 +253,16 @@ function firefoxInjectInfo(homeDir: string, backups: BackupStore): InjectTargetI
 function codexInjectInfo(homeDir: string, backups: BackupStore): InjectTargetInfo {
   const bashProfile = codexShellRcPath(homeDir)
   const bashExists = safeExists(bashProfile)
-  // Env-блок глобальный для shell: доступен всегда (apply создаст ~/.bash_profile).
-  // Подхватят все CLI: codex, claude, gemini-cli, curl…
+  // Обёртка в rc: прокси получает только `codex`, остальные CLI идут напрямую.
   return {
     id: 'codex',
-    label: 'CLI / Терминал',
+    label: 'Codex CLI',
     available: true,
     applied: Boolean(backups.codex),
     path: bashExists ? bashProfile : null,
     detail: bashExists
-      ? `~/.bash_profile — env для всех CLI (codex, claude, curl…)`
-      : 'Создадим ~/.bash_profile с env-прокси для всех CLI',
+      ? `~/.bash_profile — обёртка codex() с SOCKS-прокси (только codex)`
+      : 'Создадим ~/.bash_profile с обёрткой codex() (только codex)',
   }
 }
 
@@ -753,20 +752,29 @@ function revertFirefox(
   }
 }
 
-/** Writes a marked export block into ~/.bash_profile — env proxy for all CLIs. */
+/**
+ * Marked codex-only wrapper in ~/.bash_profile: the proxy env is applied to a
+ * single `codex` invocation (and its children), never to the whole shell.
+ * The /dev/tcp probe keeps a stale wrapper harmless when the bridge is down.
+ */
 export function upsertCodexBlock(content: string, ports: InjectPorts): string {
   const auth = injectAuth(ports)
   const allUrl = socksProxyUrl('127.0.0.1', ports.socksPort, auth)
   const block = [
     CODEX_BEGIN,
-    '# Прокси включается только пока порт моста слушает: иначе терминал',
-    '# получил бы мёртвый прокси и CLI перестал бы работать.',
-    `if (exec 3<>/dev/tcp/127.0.0.1/${ports.socksPort}) 2>/dev/null; then`,
-    `  export ALL_PROXY='${allUrl}'`,
-    `  export HTTPS_PROXY='${allUrl}'`,
-    `  export HTTP_PROXY='${allUrl}'`,
-    "  export NO_PROXY='localhost,127.0.0.1'",
-    'fi',
+    '# Прокси только для codex: остальные CLI (git, brew, npm, opencode) идут напрямую.',
+    '# Порт не слушает — codex запускается без прокси (мост не сломан, просто не используется).',
+    'codex() {',
+    `  if (exec 3<>/dev/tcp/127.0.0.1/${ports.socksPort}) 2>/dev/null; then`,
+    `    ALL_PROXY='${allUrl}' \\`,
+    `    HTTPS_PROXY='${allUrl}' \\`,
+    `    HTTP_PROXY='${allUrl}' \\`,
+    "    NO_PROXY='localhost,127.0.0.1' \\",
+    '      command codex "$@"',
+    '  else',
+    '    command codex "$@"',
+    '  fi',
+    '}',
     CODEX_END,
   ].join('\n')
   const stripped = stripCodexBlock(content).trimEnd()
@@ -804,15 +812,15 @@ function applyCodex(
     id: 'codex',
     ok: true,
     message:
-      `Экспорт прокси для всех CLI записан в ${rcPath}. Откройте новый терминал ` +
-      '(или выполните `source ~/.bash_profile`). Проверка: `echo $ALL_PROXY`.',
+      `Обёртка codex() записана в ${rcPath}: прокси применяется только к codex. ` +
+      'Откройте новый терминал (или выполните `source ~/.bash_profile`).',
   }
 }
 
 function revertCodex(homeDir: string, backups: BackupStore): InjectActionResult {
   const snap = backups.codex
   if (!snap) {
-    return { id: 'codex', ok: false, message: 'Нет сохранённого отката для CLI / Терминала' }
+    return { id: 'codex', ok: false, message: 'Нет сохранённого отката для Codex CLI' }
   }
   const rcPath = snap.path || codexShellRcPath(homeDir)
   if (!snap.existed) {
@@ -830,7 +838,7 @@ function revertCodex(homeDir: string, backups: BackupStore): InjectActionResult 
     id: 'codex',
     ok: true,
     message:
-      'CLI / Терминал: env-прокси откачен. Откройте новый терминал или `source ~/.bash_profile`.',
+      'Codex CLI: обёртка удалена, codex снова запускается напрямую. Откройте новый терминал или `source ~/.bash_profile`.',
   }
 }
 
@@ -879,7 +887,7 @@ export const INJECT_APPS: Record<InjectTarget, InjectAppCard> = {
   },
   codex: {
     id: 'codex',
-    label: 'CLI / Терминал',
+    label: 'Codex CLI',
     relaunchable: false,
     info: codexInjectInfo,
     apply: applyCodex,
@@ -1089,7 +1097,7 @@ function cursorSettingsPath(homeDir: string): string {
   )
 }
 
-/** Shell rc used by Codex CLI to read proxy env. Bash is the interactive login shell here. */
+/** Shell rc where the codex-only wrapper lives. Bash is the login shell here. */
 function codexShellRcPath(homeDir: string): string {
   return path.join(homeDir, '.bash_profile')
 }

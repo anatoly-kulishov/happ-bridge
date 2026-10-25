@@ -1097,7 +1097,8 @@ async function main() {
       upserted.includes(`if (exec 3<>/dev/tcp/127.0.0.1/${ports.socksPort}) 2>/dev/null; then`),
       'прокси включается только при живом порте — CLI не получает мёртвый адрес',
     )
-    assert.ok(upserted.includes('\nfi\n'), 'блок закрыт fi')
+    assert.ok(upserted.includes('codex() {'), 'прокси применяется только к codex (обёртка)')
+    assert.ok(upserted.includes('command codex "$@"'), 'обёртка зовёт настоящий бинарь')
     assert.ok(upserted.includes("NO_PROXY='localhost,127.0.0.1'"))
     assert.ok(upserted.includes('export EDITOR=vi'), 'unrelated line must stay')
 
@@ -1126,29 +1127,37 @@ async function main() {
     assert.equal(stripCodexBlock(authed), original)
   }
 
-  // Guard: прокси реально включается только пока порт слушает (иначе CLI
-  // получал бы мёртвый адрес — это и ломало codex после выхода из моста).
+  // Guard + scope: обёртка отдаёт прокси только codex и только пока порт
+  // слушает. Глобальный env не трогается (git/brew/npm/opencode — напрямую).
   {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hb-guard-'))
+    const bin = path.join(dir, 'bin')
+    fs.mkdirSync(bin, { recursive: true })
+    // Fake codex binary: prints the proxy env it was called with.
+    const fakeCodex = path.join(bin, 'codex')
+    fs.writeFileSync(fakeCodex, '#!/bin/bash\nprintf %s "${ALL_PROXY:-none}"\n', 'utf8')
+    fs.chmodSync(fakeCodex, 0o755)
+
     const rc = path.join(dir, 'rc')
     const [port] = await freePorts(1)
     fs.writeFileSync(rc, upsertCodexBlock('', { socksPort: port, httpPort: port + 1 }), 'utf8')
 
-    const readEnv = (): string =>
-      execFileSync('bash', ['-c', '. "$1"; printf %s "${ALL_PROXY:-none}"', '_', rc], {
+    const run = (script: string): string =>
+      execFileSync('bash', ['-c', script, '_', rc], {
         encoding: 'utf8',
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` },
       })
+    const callCodex = () => run('. "$1"; codex')
+    const globalEnv = () => run('. "$1"; printf %s "${ALL_PROXY:-none}"')
 
-    assert.equal(readEnv(), 'none', 'порт закрыт ⇒ прокси не экспортируется')
+    assert.equal(callCodex(), 'none', 'порт закрыт ⇒ codex идёт без прокси')
+    assert.equal(globalEnv(), 'none', 'глобальный env не тронут')
 
     const srv = net.createServer((s) => s.end())
     await new Promise<void>((resolve) => srv.listen(port, '127.0.0.1', () => resolve()))
     try {
-      assert.equal(
-        readEnv(),
-        `socks5://127.0.0.1:${port}`,
-        'порт слушает ⇒ прокси экспортируется',
-      )
+      assert.equal(callCodex(), `socks5://127.0.0.1:${port}`, 'порт слушает ⇒ codex с прокси')
+      assert.equal(globalEnv(), 'none', 'глобальный env не тронут')
     } finally {
       await new Promise<void>((resolve) => srv.close(() => resolve()))
       fs.rmSync(dir, { recursive: true, force: true })
@@ -1189,7 +1198,7 @@ async function main() {
     )
 
     // label совпадает с object-меткой панели (см. InjectAppsPanel targetMeta)
-    assert.equal(INJECT_APPS.codex.label, 'CLI / Терминал')
+    assert.equal(INJECT_APPS.codex.label, 'Codex CLI')
     assert.equal(INJECT_APPS.cursor.label, 'Cursor')
 
     // Только CLI не подлежит перезапуску GUI.

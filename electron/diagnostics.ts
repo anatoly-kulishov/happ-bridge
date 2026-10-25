@@ -152,10 +152,10 @@ export async function runDiagnostics(opts: {
     checks.push({
       id: 'cli',
       status: cli.applied ? 'ok' : 'warn',
-      label: 'CLI / Терминал',
+      label: 'Codex CLI',
       detail: cli.applied
-        ? `Прописан в ~/.bash_profile: новые терминалы и OpenCode ходят через мост (socks5://127.0.0.1:${settings.socksPort})`
-        : 'Не прописан — терминалы ходят напрямую. В карточке «CLI / Терминал» нажмите «Прописать», затем откройте новый терминал.',
+        ? `Обёртка codex() в ~/.bash_profile: codex ходит через мост (socks5://127.0.0.1:${settings.socksPort}), остальные CLI — напрямую`
+        : 'Не прописан — codex ходит напрямую. В карточке «Codex CLI» нажмите «Прописать», затем откройте новый терминал.',
     })
   }
 
