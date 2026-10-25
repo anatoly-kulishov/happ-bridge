@@ -11,7 +11,7 @@
 
 [Русский](#happ-bridge-рус) · [English](#happ-bridge-en) · [Download](#install) · [Site](https://anatoly-kulishov.github.io/happ-bridge/) · [Changelog](docs/CHANGELOG.md) · [Security](docs/SECURITY.md)
 
-**Current version:** 1.3.0
+**Current version:** 1.4.0
 
 ---
 
@@ -50,7 +50,7 @@ Happ на iPhone раздаёт SOCKS5 / HTTP прокси в локальную
 - macOS (Apple Silicon) + телефон с Happ и включённым **«Разрешить LAN подключение»**
 - кто устал обновлять прокси в Telegram / Cursor / IDE после смены Wi‑Fi
 
-### Возможности (1.3.0)
+### Возможности (1.4.0)
 
 - **автообновление, которое ставится**: после «Установить» ZIP подменяет `.app` (unsigned-сборка без ShipIt), снимает quarantine и перезапускает
 - **lean packaging**: `.app` ~197 MB, prune Framework locales, Preact + hand CSS, lazy Wizard/Inject/diagnostics
@@ -112,7 +112,7 @@ npm test
 npm run dist
 ```
 
-Готовый файл: `release/Happ-Bridge-1.3.0-arm64.dmg` · разработка: `npm run dev`
+Готовый файл: `release/Happ-Bridge-1.4.0-arm64.dmg` · разработка: `npm run dev`
 
 ### Как пользоваться
 
@@ -156,7 +156,7 @@ Electron · Vite · React · TypeScript · Tailwind
 
 Stable localhost proxy bridge to a phone running Happ on your LAN. Stop editing proxy IPs in Telegram, Cursor, Firefox, and WebStorm every time DHCP moves your phone.
 
-**Version 1.3.0** - auto-update that replaces the unsigned `.app` (ZIP apply after quit, no ShipIt), lean packaging (~197 MB), semantic CSS/UI polish.
+**Version 1.4.0** - always-on localhost listeners with fail-open (SOCKS5/HTTP CONNECT go direct when the phone is away), codex-only CLI proxy wrapper, app registry, step-by-step diagnostics with actions.
 
 ### Why
 
